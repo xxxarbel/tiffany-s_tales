@@ -1,0 +1,33 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f5faf4;
+  --foreground: #1f2a22;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+
+  /* Tiffany's Tales — cosy, literary, green palette
+     dark green base + lighter green for contrast */
+  --color-cream: #f4f9f3; /* page background, near-white green tint */
+  --color-parchment: #e6f1e6; /* soft section background */
+  --color-ink: #15241a; /* primary text, dark green-charcoal */
+  --color-muted: #51604f; /* secondary text */
+  --color-brand: #1e5631; /* primary dark green */
+  --color-brand-dark: #123c20; /* hover / deepest green */
+  --color-brand-light: #5fb866; /* lighter green accent for contrast */
+  --color-brand-soft: #e1efe2; /* tinted surface */
+  --color-sage: #84b58a; /* muted mid green */
+  --color-forest: #102e1b; /* deep feature / footer block */
+
+  --font-sans: var(--font-geist-sans);
+  --font-display: var(--font-playfair);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}
