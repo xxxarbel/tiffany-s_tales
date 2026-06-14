@@ -1,11 +1,11 @@
 import Image from "next/image";
+import Link from "next/link";
 import {
   ArrowRight,
   BookOpen,
   Coffee,
   MessageCircle,
   PawPrint,
-  ShoppingBag,
   Sparkles,
   Star,
   Users,
@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/accordion";
 import { Separator } from "@/components/ui/separator";
 import { ContactForm } from "@/components/contact-form";
+import { AuthNav } from "@/components/auth/auth-nav";
 
 const navLinks = [
   { label: "Home", href: "#home" },
@@ -40,16 +41,19 @@ const navLinks = [
 const benefits = [
   {
     icon: Users,
+    image: "/images/benefit-connection.jpg",
     title: "Real Connection",
     text: "Swap the screen for a sofa. Meet readers near you and build genuine friendships.",
   },
   {
     icon: MessageCircle,
+    image: "/images/benefit-discussion.jpg",
     title: "Lively Discussion",
     text: "Every voice matters. Share your take, hear new perspectives and dig into the story.",
   },
   {
     icon: Sparkles,
+    image: "/images/benefit-story.jpg",
     title: "A Fresh Story",
     text: "A new book every month, chosen together — with plenty of room for your suggestions.",
   },
@@ -150,17 +154,7 @@ export default function Home() {
               </a>
             ))}
           </nav>
-          <div className="flex items-center gap-2">
-            <Button
-              className="hidden h-9 px-4 sm:inline-flex"
-              render={<a href="#contact" />}
-            >
-              Join my pack
-            </Button>
-            <Button variant="ghost" size="icon" aria-label="Cart">
-              <ShoppingBag />
-            </Button>
-          </div>
+          <AuthNav />
         </div>
       </header>
 
@@ -188,7 +182,7 @@ export default function Home() {
               <Button
                 variant="secondary"
                 className="h-11 px-7 text-base"
-                render={<a href="#packs" />}
+                render={<Link href="/login" />}
               >
                 Join my pack today!
               </Button>
@@ -271,11 +265,23 @@ export default function Home() {
         </div>
         <div className="grid gap-6 sm:grid-cols-3">
           {benefits.map((b) => (
-            <Card key={b.title} className="text-center transition-shadow hover:shadow-md">
-              <CardHeader className="items-center justify-items-center gap-3">
-                <div className="flex size-14 items-center justify-center rounded-full bg-secondary">
-                  <b.icon className="size-6 text-primary" />
+            <Card
+              key={b.title}
+              className="gap-0 overflow-hidden pt-0 text-center transition-shadow hover:shadow-md"
+            >
+              <div className="relative h-40 overflow-hidden">
+                <Image
+                  src={b.image}
+                  alt={b.title}
+                  fill
+                  sizes="(min-width: 640px) 20rem, 90vw"
+                  className="object-cover"
+                />
+                <div className="absolute bottom-0 left-1/2 flex size-12 -translate-x-1/2 translate-y-1/2 items-center justify-center rounded-full bg-background shadow-md ring-1 ring-foreground/10">
+                  <b.icon className="size-5 text-primary" />
                 </div>
+              </div>
+              <CardHeader className="items-center justify-items-center gap-2 pt-10">
                 <CardTitle className="font-display text-xl">{b.title}</CardTitle>
                 <CardDescription className="text-balance">
                   {b.text}

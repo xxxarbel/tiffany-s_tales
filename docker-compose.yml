@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: tiffany_tales_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: tiffany
+      POSTGRES_PASSWORD: tiffany_dev_pw
+      POSTGRES_DB: tiffany_tales
+    ports:
+      - "5432:5432"
+    volumes:
+      - tiffany_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tiffany -d tiffany_tales"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  tiffany_pgdata:
