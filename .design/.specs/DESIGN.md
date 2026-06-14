@@ -133,16 +133,19 @@ app/
   dashboard/page.tsx          # /dashboard — protected; shows captured user details
   api/auth/[...all]/route.ts  # Better Auth handler (toNextJsHandler)
 components/
+  site-header.tsx             # sticky header: logo + desktop nav + auth + mobile Sheet menu (client)
   contact-form.tsx            # marketing contact form (client)
   auth/
-    auth-nav.tsx              # header session state (client, useSession)
+    auth-nav.tsx              # legacy header auth cluster (client) — superseded by site-header
+    user-menu.tsx             # logged-in avatar + dropdown (UserMenu, UserAvatar) (client)
     login-form.tsx            # signIn.email (client)
     signup-form.tsx           # signUp.email — captures name/email/password (client)
-    sign-out-button.tsx       # signOut (client)
+    sign-out-button.tsx       # signOut (client); accepts className
     google-button.tsx         # signIn.social google (client); shown when isGoogleEnabled
-  ui/                         # shadcn components (button, card, accordion, tabs, field, …)
+  ui/                         # shadcn components (button, card, accordion, tabs, field, sheet,
+                              #   avatar, dropdown-menu, skeleton, spinner, …)
 lib/
-  auth.ts                     # betterAuth() config (server)
+  auth.ts                     # betterAuth() config + getSafeSession() (server)
   auth-client.ts              # createAuthClient (browser)
   db.ts                       # drizzle + pg Pool
   schema.ts                   # Better Auth tables (user/session/account/verification)
@@ -169,8 +172,12 @@ components.json               # shadcn config
   Google sign-in captures name, email, and avatar (`user.image`) — no schema change needed.
 - **Flows:** `/login` Tabs → `authClient.signUp.email` / `signIn.email` → redirect to
   `/dashboard`. Google → `authClient.signIn.social({ provider: "google", callbackURL: "/dashboard" })`.
-  `/dashboard` reads session server-side via
-  `auth.api.getSession({ headers: await headers() })` and redirects to `/login` if absent.
+  `/login` and `/dashboard` read the session server-side via **`getSafeSession()`** (`lib/auth.ts`),
+  which wraps `auth.api.getSession` in try/catch and returns `null` on DB failure — so an
+  unreachable database shows the login form instead of crashing with a Next.js error digest.
+- **Logged-in UI:** the header shows an **avatar** (`components/auth/user-menu.tsx`) — Google
+  photo (`user.image`) or initials fallback — opening a dropdown with name/email, "My account"
+  (`/dashboard`), and "Sign out". The mobile sheet shows a profile row + sign-out.
 - **Health check:** `GET /api/auth/ok` → `{ ok: true }`.
 - **Verified working end-to-end** (email sign-up persists row, login issues session, wrong
   password → 401; Google social endpoint returns a valid auth URL with the correct callback).
@@ -208,6 +215,20 @@ GOOGLE_CLIENT_SECRET=    # empty by default — fill in to enable Google sign-in
 secrets management before deploying. Never commit a real `.env`. Google creds are left
 **empty** so nothing sensitive is committed; the Google button stays hidden until they're set.
 
+### Production (Neon Postgres)
+- Production uses a **Neon** serverless Postgres (not the local Docker DB). Its URL lives in
+  `.env` for reference but the **real production env vars must be set on the host** (Vercel etc.):
+  - `DATABASE_URL` → the Neon connection string (`...neon.tech/neondb?sslmode=require`)
+  - `BETTER_AUTH_URL` → the **production https domain** (NOT `localhost`) — a wrong value breaks
+    OAuth callbacks and cookies
+  - `BETTER_AUTH_SECRET` → 32+ char secret
+  - `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` (if Google is used in prod) + add the prod
+    redirect URI `https://<domain>/api/auth/callback/google` in Google Cloud Console
+- The Neon DB needs the auth tables created once: run `db:push` (or migrate) against the Neon
+  `DATABASE_URL`. A deploy will crash on `/login` with a Next.js error digest if the tables
+  are missing or the DB is unreachable.
+- 🔐 Rotate any DB password that has been shared in plain text.
+
 ---
 
 ## 10. How to run
@@ -215,9 +236,15 @@ secrets management before deploying. Never commit a real `.env`. Google creds ar
 ```bash
 docker compose up -d     # start Postgres (container: tiffany_tales_db, port 5432)
 npm install              # if deps not installed
-# first time / after schema change:
-DATABASE_URL="postgres://tiffany:tiffany_dev_pw@localhost:5432/tiffany_tales" npx drizzle-kit push
+npm run db:push          # create/sync the auth tables (first time / after schema change)
 npm run dev              # http://localhost:3000
+```
+**DB scripts** (drizzle-kit auto-loads `DATABASE_URL` from `.env`):
+```bash
+npm run db:push      # sync lib/schema.ts -> Postgres (the dev workflow)
+npm run db:studio    # open Drizzle Studio (browser GUI for the tables)
+npm run db:generate  # generate SQL migration files
+npm run db:migrate   # apply generated migration files
 ```
 Quality gates (all currently pass):
 ```bash
@@ -230,6 +257,15 @@ Useful DB peek:
 docker exec tiffany_tales_db psql -U tiffany -d tiffany_tales -c '\dt'
 docker exec tiffany_tales_db psql -U tiffany -d tiffany_tales -c 'SELECT name,email,created_at FROM "user";'
 ```
+
+### Deploying to production
+1. Set the production env vars on the host (see §9 — Neon `DATABASE_URL`, `BETTER_AUTH_URL`
+   = prod domain, `BETTER_AUTH_SECRET`, Google creds if used).
+2. Create the tables in the Neon DB once: `npm run db:push` with `DATABASE_URL` pointing at Neon
+   (PowerShell: `$env:DATABASE_URL="<neon-url>"; npm run db:push`).
+3. Deploy. `/login` and `/dashboard` read the session server-side via `getSafeSession()`
+   (`lib/auth.ts`), which returns `null` instead of throwing if the DB is unreachable — so the
+   login form still renders rather than showing a Next.js error digest.
 
 ---
 
@@ -247,6 +283,11 @@ docker exec tiffany_tales_db psql -U tiffany -d tiffany_tales -c 'SELECT name,em
   before importing (`node -e "console.log('X' in require('lucide-react'))"`).
 - `ctx7` CLI / find-docs skill: use for any library API question (Better Auth, Next.js,
   Drizzle, Tailwind) — versions move fast.
+- **Production crash = DB/env, not code.** A Next.js "ERROR <digits>" on `/login` in prod is an
+  error digest — almost always an unreachable DB (`DATABASE_URL` still `localhost`) or missing
+  tables in Neon. Fix the env + run `db:push` against Neon; `getSafeSession()` keeps the page
+  from hard-crashing meanwhile.
+- **Avatar / DropdownMenu / Sheet are Base UI** — trigger composition uses the `render` prop.
 
 ---
 
@@ -258,14 +299,19 @@ docker exec tiffany_tales_db psql -U tiffany -d tiffany_tales -c 'SELECT name,em
 
 ---
 
-## 13. Suggested next steps (not yet done)
+## 13. Suggested next steps
 
+Done recently: mobile hamburger nav, logged-in avatar menu, Google OAuth, `db:*` scripts,
+`getSafeSession()` hardening.
+
+- [ ] **Create the auth tables in the Neon production DB** (`db:push` against the Neon URL) and
+      set prod env vars — required for production login (see §9–10).
+- [ ] **Rotate the Neon DB password** (it was shared in plain text).
 - [ ] Wire the **contact form** to a backend (server action → DB table or email).
 - [ ] **Email verification** + password reset (Better Auth `emailVerification` / `sendResetPassword`).
 - [ ] Real **billing** for the £10/month membership (the original scaffold hinted at Polar).
 - [ ] Capture extra sign-up fields (e.g. **preferred pack**) via Better Auth `user.additionalFields`.
 - [ ] Replace placeholder Unsplash photos + clip-art logo with **real brand assets** (transparent-PNG logo).
-- [ ] Mobile nav (hamburger) — current nav hides links under `lg`.
 - [ ] Resolve `npm audit` advisories from `drizzle-kit` build-time deps (dev-only).
 - [ ] Generate proper Drizzle **migration files** (currently using `push`).
 
@@ -275,7 +321,7 @@ docker exec tiffany_tales_db psql -U tiffany -d tiffany_tales -c 'SELECT name,em
 
 - Branch: `main`, tracks `origin/main` (`github.com/xxxarbel/tiffany-s_tales`).
 - Pushed so far: initial build → shadcn + purple/green theme + photos + real content →
-  auth/Postgres + benefit photos + design handoff.
-- **Uncommitted at last update:** the Google OAuth feature (lib/auth.ts, google-button.tsx,
-  login page, env additions) and this DESIGN.md update. Run the `checkpoint` skill
+  auth/Postgres + benefit photos + design handoff → Google login + avatar menu + mobile nav
+  + polish → session-read hardening (`getSafeSession`).
+- **Uncommitted at last update:** this DESIGN.md update. Run the `checkpoint` skill
   (`.agents/.skills/checkpoint/SKILL.md`) to lint/type-check/build, commit, and push.
