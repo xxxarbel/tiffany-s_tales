@@ -3,7 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 
-import { auth } from "@/lib/auth";
+import { auth, isGoogleEnabled } from "@/lib/auth";
 import {
   Card,
   CardContent,
@@ -11,9 +11,11 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LoginForm } from "@/components/auth/login-form";
 import { SignupForm } from "@/components/auth/signup-form";
+import { GoogleButton } from "@/components/auth/google-button";
 
 export default async function LoginPage() {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -49,6 +51,16 @@ export default async function LoginPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
+          {isGoogleEnabled ? (
+            <div className="mb-6">
+              <GoogleButton label="Continue with Google" />
+              <div className="mt-6 flex items-center gap-3 text-xs text-muted-foreground">
+                <Separator className="flex-1" />
+                or
+                <Separator className="flex-1" />
+              </div>
+            </div>
+          ) : null}
           <Tabs defaultValue="signup" className="w-full">
             <TabsList className="w-full">
               <TabsTrigger value="signup">Subscribe</TabsTrigger>

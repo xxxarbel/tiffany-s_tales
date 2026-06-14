@@ -28,15 +28,7 @@ import {
 } from "@/components/ui/accordion";
 import { Separator } from "@/components/ui/separator";
 import { ContactForm } from "@/components/contact-form";
-import { AuthNav } from "@/components/auth/auth-nav";
-
-const navLinks = [
-  { label: "Home", href: "#home" },
-  { label: "About", href: "#about" },
-  { label: "Book Club Benefits", href: "#benefits" },
-  { label: "Book Reviews", href: "#reviews" },
-  { label: "Contact", href: "#contact" },
-];
+import { SiteHeader } from "@/components/site-header";
 
 const benefits = [
   {
@@ -134,29 +126,7 @@ function Logo({
 export default function Home() {
   return (
     <div id="home" className="font-sans text-foreground">
-      {/* Header */}
-      <header className="sticky top-0 z-20 border-b bg-background/80 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-3">
-          <a href="#home" className="flex items-center gap-2.5">
-            <Logo size={40} priority className="ring-2 ring-primary/25" />
-            <span className="font-display text-xl font-bold tracking-tight sm:text-2xl">
-              Tiffany&apos;s Tales
-            </span>
-          </a>
-          <nav className="hidden items-center gap-6 text-sm font-medium text-muted-foreground lg:flex">
-            {navLinks.map((link) => (
-              <a
-                key={link.href}
-                href={link.href}
-                className="transition-colors hover:text-foreground"
-              >
-                {link.label}
-              </a>
-            ))}
-          </nav>
-          <AuthNav />
-        </div>
-      </header>
+      <SiteHeader />
 
       {/* Hero */}
       <section className="relative overflow-hidden bg-gradient-to-br from-primary to-plum text-cream">
@@ -188,7 +158,7 @@ export default function Home() {
               </Button>
               <Button
                 variant="outline"
-                className="h-11 px-7 text-base"
+                className="h-11 border-cream/40 bg-transparent px-7 text-base text-cream hover:bg-cream/10 hover:text-cream"
                 render={<a href="#book-of-the-month" />}
               >
                 This month&apos;s read
@@ -259,6 +229,9 @@ export default function Home() {
       {/* Benefits */}
       <section id="benefits" className="mx-auto max-w-6xl px-6 py-20">
         <div className="mb-12 text-center">
+          <p className="mb-2 text-sm font-semibold tracking-[0.15em] text-primary uppercase">
+            Membership benefits
+          </p>
           <h2 className="font-display text-3xl font-bold sm:text-4xl">
             Why Join the Pack?
           </h2>
@@ -296,6 +269,9 @@ export default function Home() {
       <section id="packs" className="bg-muted/50 py-20">
         <div className="mx-auto max-w-6xl px-6">
           <div className="mb-12 text-center">
+            <p className="mb-2 text-sm font-semibold tracking-[0.15em] text-primary uppercase">
+              Our packs
+            </p>
             <h2 className="font-display text-3xl font-bold sm:text-4xl">
               Find Your Pack
             </h2>
@@ -382,9 +358,14 @@ export default function Home() {
       {/* FAQ */}
       <section className="bg-muted/50 py-20">
         <div className="mx-auto max-w-3xl px-6">
-          <h2 className="text-center font-display text-3xl font-bold sm:text-4xl">
-            Frequently Asked Questions
-          </h2>
+          <div className="text-center">
+            <p className="mb-2 text-sm font-semibold tracking-[0.15em] text-primary uppercase">
+              Good to know
+            </p>
+            <h2 className="font-display text-3xl font-bold sm:text-4xl">
+              Frequently Asked Questions
+            </h2>
+          </div>
           <Accordion className="mt-10">
             {faqs.map((faq) => (
               <AccordionItem key={faq.q} value={faq.q}>
@@ -403,6 +384,9 @@ export default function Home() {
       {/* Book Reviews */}
       <section id="reviews" className="mx-auto max-w-5xl px-6 py-20">
         <div className="mb-12 text-center">
+          <p className="mb-2 text-sm font-semibold tracking-[0.15em] text-primary uppercase">
+            From the pack
+          </p>
           <h2 className="font-display text-3xl font-bold sm:text-4xl">
             Book Reviews
           </h2>
@@ -453,6 +437,9 @@ export default function Home() {
       <section id="contact" className="bg-muted/50 py-20">
         <div className="mx-auto max-w-2xl px-6">
           <div className="mb-10 text-center">
+            <p className="mb-2 text-sm font-semibold tracking-[0.15em] text-primary uppercase">
+              Get in touch
+            </p>
             <h2 className="font-display text-3xl font-bold sm:text-4xl">
               Contact us
             </h2>
@@ -470,28 +457,86 @@ export default function Home() {
       </section>
 
       {/* Footer */}
-      <footer className="bg-plum py-12 text-cream/80">
-        <div className="mx-auto flex max-w-6xl flex-col items-center gap-4 px-6 text-center">
-          <div className="flex items-center gap-2.5">
-            <Logo size={40} className="ring-2 ring-sage/50" />
-            <span className="font-display text-xl font-bold text-cream">
-              Tiffany&apos;s Tales
-            </span>
+      <footer className="bg-plum text-cream/80">
+        <div className="mx-auto max-w-6xl px-6 py-14">
+          <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-[1.5fr_1fr_1fr]">
+            {/* Brand */}
+            <div>
+              <div className="flex items-center gap-2.5">
+                <Logo size={44} className="ring-2 ring-sage/50" />
+                <span className="font-display text-xl font-bold text-cream">
+                  Tiffany&apos;s Tales
+                </span>
+              </div>
+              <p className="mt-4 max-w-xs text-sm leading-relaxed text-cream/70">
+                A cosy book club bringing readers together to share stories,
+                friendship and a love of books. Join my pack today!
+              </p>
+            </div>
+
+            {/* Explore */}
+            <div>
+              <h3 className="font-display text-sm font-semibold tracking-wide text-cream uppercase">
+                Explore
+              </h3>
+              <ul className="mt-4 flex flex-col gap-2.5 text-sm">
+                <li>
+                  <a href="#about" className="transition-colors hover:text-cream">
+                    About
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="#benefits"
+                    className="transition-colors hover:text-cream"
+                  >
+                    Book Club Benefits
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="#reviews"
+                    className="transition-colors hover:text-cream"
+                  >
+                    Book Reviews
+                  </a>
+                </li>
+                <li>
+                  <Link
+                    href="/login"
+                    className="transition-colors hover:text-cream"
+                  >
+                    Join / Log in
+                  </Link>
+                </li>
+              </ul>
+            </div>
+
+            {/* Visit & follow */}
+            <div>
+              <h3 className="font-display text-sm font-semibold tracking-wide text-cream uppercase">
+                Visit
+              </h3>
+              <p className="mt-4 text-sm leading-relaxed text-cream/70">
+                Maidstone,
+                <br />
+                United Kingdom
+              </p>
+              <a
+                href="https://www.instagram.com/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-sage transition-colors hover:text-cream"
+              >
+                <InstagramIcon className="size-4" />
+                Follow on Instagram
+              </a>
+            </div>
           </div>
-          <p className="text-sm">
-            Tiffany&apos;s Tales · Maidstone · United Kingdom
-          </p>
-          <a
-            href="https://www.instagram.com/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 text-sm font-medium text-sage transition-colors hover:text-cream"
-          >
-            <InstagramIcon className="size-4" />
-            Follow on Instagram
-          </a>
-          <Separator className="my-2 max-w-xs bg-cream/15" />
-          <p className="text-xs text-cream/50">
+
+          <Separator className="my-8 bg-cream/15" />
+
+          <p className="text-center text-xs text-cream/50">
             © {new Date().getFullYear()} Tiffany&apos;s Tales Book Club ·
             Maidstone, United Kingdom
           </p>

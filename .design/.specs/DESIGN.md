@@ -139,6 +139,7 @@ components/
     login-form.tsx            # signIn.email (client)
     signup-form.tsx           # signUp.email — captures name/email/password (client)
     sign-out-button.tsx       # signOut (client)
+    google-button.tsx         # signIn.social google (client); shown when isGoogleEnabled
   ui/                         # shadcn components (button, card, accordion, tabs, field, …)
 lib/
   auth.ts                     # betterAuth() config (server)
@@ -160,16 +161,30 @@ components.json               # shadcn config
 ## 8. Auth & database
 
 - **Stack:** Better Auth (email+password, `autoSignIn: true`, `minPasswordLength: 8`,
-  `nextCookies()` plugin) → Drizzle adapter (`provider: "pg"`) → Postgres.
+  `nextCookies()` plugin) + **Google OAuth** → Drizzle adapter (`provider: "pg"`) → Postgres.
 - **Tables** (`lib/schema.ts`, snake_case columns): `user`, `session`, `account`
-  (stores hashed password under `provider_id = 'credential'`), `verification`.
+  (stores hashed password under `provider_id = 'credential'`, and Google identities under
+  `provider_id = 'google'` with access/refresh/id tokens + scope), `verification`.
 - **Captured at sign-up:** name, email, password (hashed — verified, never plaintext).
+  Google sign-in captures name, email, and avatar (`user.image`) — no schema change needed.
 - **Flows:** `/login` Tabs → `authClient.signUp.email` / `signIn.email` → redirect to
-  `/dashboard`. `/dashboard` reads session server-side via
+  `/dashboard`. Google → `authClient.signIn.social({ provider: "google", callbackURL: "/dashboard" })`.
+  `/dashboard` reads session server-side via
   `auth.api.getSession({ headers: await headers() })` and redirects to `/login` if absent.
 - **Health check:** `GET /api/auth/ok` → `{ ok: true }`.
-- **Verified working end-to-end** (sign-up persists row, login issues session, wrong
-  password → 401).
+- **Verified working end-to-end** (email sign-up persists row, login issues session, wrong
+  password → 401; Google social endpoint returns a valid auth URL with the correct callback).
+
+### Google OAuth (`.design/.specs/better_auth.md`)
+- Config lives in `lib/auth.ts` under `socialProviders.google` (`prompt: "select_account"`),
+  **guarded by `isGoogleEnabled`** — it activates only when both `GOOGLE_CLIENT_ID` and
+  `GOOGLE_CLIENT_SECRET` are set, so the app still builds/runs on email-password until then.
+- UI: `components/auth/google-button.tsx` ("Continue with Google"), shown above the tabs on
+  `/login` only when `isGoogleEnabled` is true.
+- **To enable:** Google Cloud Console → APIs & Services → Credentials → Create credentials →
+  OAuth client ID → **Web application**. Authorized redirect URI:
+  `http://localhost:3000/api/auth/callback/google` (prod: `https://<domain>/api/auth/callback/google`).
+  Paste Client ID/Secret into `.env`, restart `npm run dev`. The Google button appears automatically.
 
 ### Schema changes
 After editing `lib/schema.ts` (or adding Better Auth plugins), re-push:
@@ -186,9 +201,12 @@ DATABASE_URL="postgres://tiffany:tiffany_dev_pw@localhost:5432/tiffany_tales" np
 DATABASE_URL=postgres://tiffany:tiffany_dev_pw@localhost:5432/tiffany_tales
 BETTER_AUTH_SECRET=<openssl rand -base64 32>
 BETTER_AUTH_URL=http://localhost:3000
+GOOGLE_CLIENT_ID=        # empty by default — fill in to enable Google sign-in
+GOOGLE_CLIENT_SECRET=    # empty by default — fill in to enable Google sign-in
 ```
 ⚠️ The DB password + secret in the repo are **throwaway local-dev values**. Use real
-secrets management before deploying. Never commit a real `.env`.
+secrets management before deploying. Never commit a real `.env`. Google creds are left
+**empty** so nothing sensitive is committed; the Google button stays hidden until they're set.
 
 ---
 
@@ -255,6 +273,9 @@ docker exec tiffany_tales_db psql -U tiffany -d tiffany_tales -c 'SELECT name,em
 
 ## 14. Git
 
-- Branch: `master`. Commits so far: initial build → shadcn + purple/green theme + photos + real content.
-- The auth/DB feature (this batch) is **not yet committed** — run the `checkpoint` skill
-  (`.agents/.skills/checkpoint/SKILL.md`) to lint/type-check/build and commit.
+- Branch: `main`, tracks `origin/main` (`github.com/xxxarbel/tiffany-s_tales`).
+- Pushed so far: initial build → shadcn + purple/green theme + photos + real content →
+  auth/Postgres + benefit photos + design handoff.
+- **Uncommitted at last update:** the Google OAuth feature (lib/auth.ts, google-button.tsx,
+  login page, env additions) and this DESIGN.md update. Run the `checkpoint` skill
+  (`.agents/.skills/checkpoint/SKILL.md`) to lint/type-check/build, commit, and push.
