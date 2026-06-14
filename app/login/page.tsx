@@ -1,9 +1,8 @@
 import Image from "next/image";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { headers } from "next/headers";
 
-import { auth, isGoogleEnabled } from "@/lib/auth";
+import { getSafeSession, isGoogleEnabled } from "@/lib/auth";
 import {
   Card,
   CardContent,
@@ -18,7 +17,7 @@ import { SignupForm } from "@/components/auth/signup-form";
 import { GoogleButton } from "@/components/auth/google-button";
 
 export default async function LoginPage() {
-  const session = await auth.api.getSession({ headers: await headers() });
+  const session = await getSafeSession();
   if (session) {
     redirect("/dashboard");
   }

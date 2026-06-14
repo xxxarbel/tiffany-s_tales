@@ -1,8 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { headers } from "next/headers";
 
-import { auth } from "@/lib/auth";
+import { getSafeSession } from "@/lib/auth";
 import {
   Card,
   CardContent,
@@ -14,7 +13,7 @@ import { Separator } from "@/components/ui/separator";
 import { SignOutButton } from "@/components/auth/sign-out-button";
 
 export default async function DashboardPage() {
-  const session = await auth.api.getSession({ headers: await headers() });
+  const session = await getSafeSession();
   if (!session) {
     redirect("/login");
   }

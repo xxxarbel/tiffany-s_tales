@@ -1,3 +1,4 @@
+import { headers } from "next/headers";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { nextCookies } from "better-auth/next-js";
@@ -37,3 +38,17 @@ export const auth = betterAuth({
 });
 
 export const isGoogleEnabled = googleEnabled;
+
+/**
+ * Reads the current session without throwing. If the database is unreachable
+ * (e.g. a misconfigured DATABASE_URL in production), this returns null instead
+ * of crashing the page so the login form still renders.
+ */
+export async function getSafeSession() {
+  try {
+    return await auth.api.getSession({ headers: await headers() });
+  } catch (error) {
+    console.error("[auth] getSession failed:", error);
+    return null;
+  }
+}
