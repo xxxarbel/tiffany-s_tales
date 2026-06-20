@@ -2,35 +2,44 @@
 
 > Single source of truth for continuing work after a context reset. Covers the
 > brand, design system, page structure, tech stack, auth/DB setup, the admin
-> area, web analytics, the Goodreads import, and how to run.
+> area, web analytics, the Goodreads import, the Instagram import, reliable book
+> covers, and how to run.
 > Last updated: 2026-06-20.
 
 ## 0. Where we are right now (restart anchor)
 
-- **Code state:** `HEAD` = `7830344` on `main`, **pushed to `origin/main` and deployed to
-  Vercel** (web analytics + password reset). ⚠️ **The Goodreads import feature is built but
-  NOT yet committed** — it lives only in the local working tree (modified + untracked files,
-  see §14). So the live Vercel site does **not** have the Goodreads tab/pages yet; a local
-  `npm run dev` does.
-- ⚠️ **Neon (prod) is missing the two newest tables** — `pageview` (analytics) and
-  `goodreads_book`. `db:push` was only run against the **local Docker** DB. Analytics writes
-  and Goodreads queries **fail-soft** (caught → empty), so prod won't crash, but analytics
-  records nothing and (once Goodreads ships) reviews/shelf show empty until Neon gets both
-  tables. **Apply them to Neon before relying on either in prod** (§8c).
+- **Code state:** `HEAD` = `9ab830c` on `main`, **pushed to `origin/main` and deployed to
+  Vercel**. This commit shipped the **Goodreads import**, the **Instagram import**
+  (@tiffanystales via a Behold.so feed), and **reliable multi-source book covers**. The live
+  Vercel site now has all of these (subject to the Neon-tables caveat below).
+- ⚠️ **Neon (prod) is missing the three newest tables** — `pageview` (analytics),
+  `goodreads_book`, and `instagram_post`. `db:push` was only run against the **local Docker**
+  DB. Analytics writes and Goodreads/Instagram queries **fail-soft** (caught → empty), so prod
+  won't crash, but analytics records nothing and reviews/shelf/Instagram show empty until Neon
+  gets all three tables. **Apply them to Neon before relying on these in prod** (§8c).
 - **The app is now multi-page** (not one scrolling page): a `(marketing)` route group with
-  real routes (`/`, `/about`, `/benefits`, `/reviews`, `/goodreads`, `/contact`) plus `/login`,
-  `/reset-password`, `/dashboard`, `/profile`, and an admin area at `/admin`. The header nav are
-  **route tabs** (§6).
+  real routes (`/`, `/about`, `/benefits`, `/reviews`, `/goodreads`, `/instagram`, `/contact`)
+  plus `/login`, `/reset-password`, `/dashboard`, `/profile`, and an admin area at `/admin`. The
+  header nav are **route tabs** (§6).
 - **Auth:** email/password **with required email verification** + **password reset** (forgot →
   email link → reset page) + **Google OAuth** (with trusted account-linking). See §8 / §8d.
-- **Admin area** (`/admin`, owner only) — Better Auth **admin plugin**, four tabs: **Users**
+- **Admin area** (`/admin`, owner only) — Better Auth **admin plugin**, **five tabs**: **Users**
   (list / remove / pause / promote), **Analytics** (first-party traffic), **Goodreads** (import
-  books), **Email settings** (runtime email addresses). `arbeling@gmail.com` is auto-admin. See §8a.
+  books), **Instagram** (sync posts), **Email settings** (runtime email addresses).
+  `arbeling@gmail.com` is auto-admin. See §8a.
 - **Web Analytics:** Vercel Web Analytics (`<Analytics />`) **+ our own first-party pageview
   tracking** (beacon → `/api/track` → `pageview` table) shown in the admin Analytics tab. See §8e.
 - **Goodreads import:** admin uploads a Goodreads CSV export and/or syncs the public RSS feed;
   books land in `goodreads_book` and feed the public **/reviews** (review wall) and **/goodreads**
   (full shelf: read / currently-reading / want-to-read) pages. See §8f.
+- **Instagram import:** admin pastes a **Behold.so** JSON-feed URL for **@tiffanystales** and
+  syncs; posts land in `instagram_post` and feed the public **/instagram** page and an Instagram
+  section on **/reviews**. (Meta killed the IG Basic Display API and blocks personal-account
+  reads, so Behold — which fronts the Graph API and needs a free Professional account — is the
+  supported path; direct scraping returns 429.) See §8g.
+- **Reliable book covers:** every imported book resolves a real cover from **Open Library
+  (by ISBN → title/author search) → Google Books** at import time; if none is found, `BookCover`
+  renders a **generated text cover** (title + author) so a book is never shown without a picture. See §8f.
 - **Databases:**
   - **Local dev now points at the local Docker Postgres** (`.env` `DATABASE_URL` =
     `postgres://…@localhost:5432/tiffany_tales`). The Neon line is commented out. (This was
@@ -74,7 +83,7 @@ The brand voice is warm, friendly, community-first ("Join my pack today!" — th
 | Runtime | React 19.2.4 | |
 | Styling | **Tailwind CSS v4** | Config via `@theme inline` in `app/globals.css` (no `tailwind.config.js`). |
 | UI components | **shadcn/ui** | style `base-nova`, base library = **Base UI** (`@base-ui/react`), NOT Radix. icons = **lucide**. Config in `components.json`. |
-| Icons | `lucide-react` (^1.18.0) | ⚠️ Does NOT export `Instagram` — inline SVG used in the footer. Verify an icon exists before importing. |
+| Icons | `lucide-react` (^1.18.0) | ⚠️ Does NOT export `Instagram` — use the shared inline SVG **`components/icons/instagram-icon.tsx`** (footer, nav, admin tab, post cards). Verify an icon exists before importing. |
 | Toasts | `sonner` | `<Toaster />` in `app/layout.tsx`. |
 | Auth | **Better Auth** (^1.6.18) | email+password (**verification required** + **password reset**) + **Google OAuth** + **admin plugin**. See §8 / §8d. |
 | ORM | **Drizzle ORM** (^0.45.2) + `drizzle-kit` | `push` (dev) and generated **migration files** (`drizzle/`). |
@@ -83,6 +92,7 @@ The brand voice is warm, friendly, community-first ("Join my pack today!" — th
 | Email | **Resend** (`resend` SDK) | Verification, welcome, admin-notification, **password-reset**, and contact emails via `lib/email.ts`. Addresses are runtime-editable (§8b). Needs a verified domain to email non-owner addresses. |
 | Analytics | **`@vercel/analytics`** (^2.0.1) + first-party tracking | `<Analytics />` in root layout (Vercel dashboard) **plus** our own beacon → `/api/track` → `pageview` table, shown in admin. See §8e. |
 | CSV / XML parsing | **`papaparse`** (^5.5.4, + `@types/papaparse`) · **`fast-xml-parser`** (^5.9.3) | For the Goodreads import: papaparse = CSV library export, fast-xml-parser = RSS feed. See §8f. |
+| External data feeds | Goodreads RSS · **Behold.so** JSON feed · Open Library · Google Books | No SDKs — plain `fetch`. Behold = Instagram source (§8g); Open Library + Google Books = book-cover resolution (§8f). |
 | Fonts | `next/font/google` | Geist (sans) + Playfair Display (display/headings). |
 
 Package manager: **npm**. Path alias: `@/*` → project root (e.g. `@/components/...`, `@/lib/...`).
@@ -154,11 +164,15 @@ Clicking a nav tab navigates to a real page (no more scroll-to-anchor).
 3. **`/benefits`** — 3 photo cards (Real Connection / Lively Discussion / A Fresh Story).
 4. **`/reviews`** — the **review wall** (data-driven from `goodreads_book`): the member
    testimonial card on top, then a grid of read-shelf books that have a rating **or** written
-   review (cover, title, author, stars, date read, full review text). Empty state before import. §8f.
+   review (cover, title, author, stars, date read, full review text), then a **"From Instagram
+   @tiffanystales"** section of post cards (omitted when none). Empty state before import. §8f / §8g.
 5. **`/goodreads`** — the **full Good Reads shelf** (data-driven): cover-grid sections —
    *Currently reading*, *Read* (with stars), *Want to read* — for everything imported, copy
    references "Riette". Empty state before import. §8f.
-6. **`/contact`** — `<ContactForm />`, **wired to actually send** (server action → Resend) to the
+6. **`/instagram`** — the **Instagram reviews page** (data-driven from `instagram_post`): centered
+   "@tiffanystales" header + Follow link, then a responsive grid of post cards (square photo,
+   caption, date, "View on Instagram"). Empty state before any sync. §8g.
+7. **`/contact`** — `<ContactForm />`, **wired to actually send** (server action → Resend) to the
    configured contact recipient, reply-to = sender, optional "send me a copy". See §8b.
 
 **Auth/member routes** (standalone, outside the group):
@@ -174,8 +188,8 @@ Clicking a nav tab navigates to a real page (no more scroll-to-anchor).
 - **`/admin`** — owner-only (see §8a).
 
 **Header nav** (`components/site-header.tsx`, client, route-based active state via `usePathname`):
-- Always: Home · About · Book Club Benefits · Book Reviews · **Good Reads** · Contact (one
-  `navLinks` array drives both the desktop tabs and the mobile `Sheet`).
+- Always: Home · About · Book Club Benefits · Book Reviews · **Good Reads** · **Instagram** ·
+  Contact (one `navLinks` array drives both the desktop tabs and the mobile `Sheet`).
 - When signed in: **Dashboard · Profile** (and **Admin** when `role === "admin"`), plus the avatar
   `UserMenu`. Logged out: Log in / Join my pack. Mobile = `Sheet` with the same links.
 
@@ -192,31 +206,36 @@ app/
     page.tsx                        # Home (hero + packs + book of the month)
     about/page.tsx                  # About + FAQ
     benefits/page.tsx               # Benefits cards
-    reviews/page.tsx                # /reviews — review wall (DB: getPublicReviews) §8f
+    reviews/page.tsx                # /reviews — review wall + Instagram section (getPublicReviews + getPublicInstagramPosts) §8f/§8g
     goodreads/page.tsx              # /goodreads — full shelf (DB: getPublicBookshelf) §8f
+    instagram/page.tsx              # /instagram — IG reviews grid (DB: getPublicInstagramPosts) §8g
     contact/page.tsx                # Contact page
     contact/actions.ts              # "use server" submitContact -> sendContactEmail
   login/page.tsx                    # /login — Tabs + Google + "Forgot password?" (redirects if authed)
   reset-password/page.tsx           # /reset-password — reads ?token=; <ResetPasswordForm /> §8d
   dashboard/page.tsx                # /dashboard — protected member home
   profile/page.tsx                  # /profile — protected; editable profile + account info
-  admin/page.tsx                    # /admin — requireAdmin(); users + analytics + goodreads + email
-  admin/actions.ts                  # "use server" admin actions: settings + Goodreads import (§8f)
+  admin/page.tsx                    # /admin — requireAdmin(); users + analytics + goodreads + instagram + email
+  admin/actions.ts                  # "use server" admin actions: settings + Goodreads (§8f) + Instagram (§8g)
   api/auth/[...all]/route.ts        # Better Auth handler (serves /api/auth/* incl. /admin/*)
   api/track/route.ts                # POST pageview beacon -> pageview table (§8e)
 components/
-  site-header.tsx                   # sticky header: route tabs (incl. Good Reads) + auth + Sheet (client)
-  site-footer.tsx                   # deep-plum footer (logo, explore links, Instagram)
+  site-header.tsx                   # sticky header: route tabs (incl. Good Reads, Instagram) + auth + Sheet (client)
+  site-footer.tsx                   # deep-plum footer (logo, explore links, Instagram via shared icon)
   logo.tsx                          # shared Logo (next/image)
   contact-form.tsx                  # contact form (client) -> submitContact server action
   pageview-tracker.tsx              # client: usePathname -> sendBeacon to /api/track (§8e)
-  book-cover.tsx                    # client: <img> cover w/ placeholder fallback (reviews + goodreads)
+  book-cover.tsx                    # client: <img> cover; fallback = generated text cover (title) or icon (§8f)
+  instagram-post-card.tsx           # IG post card: BookCover photo + caption + date + "View on Instagram" (§8g)
+  icons/
+    instagram-icon.tsx              # shared inline Instagram SVG (lucide lacks it) — footer/nav/admin/cards
   admin/
-    admin-panel.tsx                 # Tabs: Users | Analytics | Goodreads | Email settings (client)
+    admin-panel.tsx                 # Tabs: Users | Analytics | Goodreads | Instagram | Email settings (client)
     admin-users-table.tsx           # user table + per-row actions + confirm AlertDialog (client)
     admin-settings-form.tsx         # edit the 3 email addresses (client)
     admin-analytics.tsx             # analytics dashboard: cards + bar chart + tables, 7/30/90 toggle (§8e)
-    admin-goodreads.tsx             # CSV upload + RSS sync + imported-books list w/ hide toggle (§8f)
+    admin-goodreads.tsx             # CSV upload + RSS sync + imported-books list (cover thumb) w/ hide toggle (§8f)
+    admin-instagram.tsx             # Behold feed-URL sync + imported-posts list w/ hide toggle (§8g)
   auth/
     user-menu.tsx                   # avatar + dropdown (Dashboard/Profile/Sign out) (client)
     login-form.tsx                  # signIn.email; 403 unverified; "Forgot password?" mode (client)
@@ -237,8 +256,9 @@ lib/
   email.ts                          # Resend: verification / welcome / admin-notice / reset / contact
   settings.ts                       # app_settings get/update (runtime email config, env fallback)
   analytics.ts                      # getAnalyticsSummary(days) over pageview table (§8e)
-  goodreads.ts                      # CSV/RSS parse + upsert + public/admin queries + user-id setting (§8f)
-  schema.ts                         # auth tables + admin cols + app_settings + pageview + goodreads_book
+  goodreads.ts                      # CSV/RSS parse + upsert + public/admin queries + cover resolution (§8f)
+  instagram.ts                      # Behold feed fetch/parse + upsert + public/admin queries + feed-url setting (§8g)
+  schema.ts                         # auth tables + admin cols + app_settings + pageview + goodreads_book + instagram_post
   utils.ts                          # cn()
 scripts/
   seed-admin.mjs                    # promote an existing owner row to admin (npm run db:seed-admin)
@@ -297,14 +317,15 @@ drizzle.config.ts  components.json  .env / .env.example
 - **`/admin` page** (`app/admin/page.tsx`, server): SSR-fetches users via
   `auth.api.listUsers({ query: { limit: 200 }, headers })` + an `account` join for the Provider
   column + `getSettings()` + `getAnalyticsSummary([7,30,90])` (§8e) + `getAdminBooks()` /
-  `getGoodreadsUserId()` (§8f). Renders `AdminPanel` (Tabs: **Users** | **Analytics** |
-  **Goodreads** | **Email settings**).
+  `getGoodreadsUserId()` (§8f) + `getAdminPosts()` / `getBeholdFeedUrl()` (§8g). Renders
+  `AdminPanel` (Tabs: **Users** | **Analytics** | **Goodreads** | **Instagram** | **Email settings**).
   - **Users tab:** table (member, provider, joined, role, status) + per-row dropdown → confirm
     `AlertDialog` → **Make/Revoke admin** (`setRole`), **Pause/Resume** (`banUser`/`unbanUser` —
     reversible, indefinite), **Remove** (`removeUser`). Own-row Pause/Remove disabled. Mutations
     `router.refresh()` to re-fetch.
   - **Analytics tab:** first-party pageview dashboard — see §8e.
   - **Goodreads tab:** import books via CSV/RSS + curate visibility — see §8f.
+  - **Instagram tab:** sync posts via a Behold feed URL + curate visibility — see §8g.
   - **Email settings tab:** edits the 3 addresses (§8b) via an admin-guarded server action.
 
 ### 8b. Runtime-editable email settings (`lib/settings.ts` + `lib/email.ts`)
@@ -332,12 +353,15 @@ drizzle.config.ts  components.json  .env / .env.example
   - **`goodreads_book`** — imported books (§8f): `id, goodreads_id (unique), title, author, isbn,
     isbn13, cover_url, my_rating, average_rating, my_review, shelf, date_read, date_added,
     year_published, source, hidden, created_at, updated_at`, index on `shelf`.
-  - ⚠️ **Neon (prod) does NOT have these two tables yet** — only local Docker got `db:push`. The
-    deployed analytics (`/api/track`, admin Analytics) and (once Goodreads ships) the book pages
+  - **`instagram_post`** — synced IG posts (§8g): `id, instagram_id (unique), permalink, caption,
+    media_type, image_url, alt_text, like_count, comments_count, posted_at, hidden, created_at,
+    updated_at`, index on `posted_at`.
+  - ⚠️ **Neon (prod) does NOT have these three tables yet** — only local Docker got `db:push`. The
+    deployed analytics (`/api/track`, admin Analytics) and the Goodreads/Instagram pages
     **fail-soft** (try/catch → empty), so prod won't 500, but nothing is recorded/shown until you
     apply the tables to Neon. To do so: either `db:push` against the Neon `DATABASE_URL`, or run
-    `CREATE TABLE IF NOT EXISTS …` SQL for both directly on Neon (same idempotent approach as the
-    admin migration). Do this **before** relying on analytics/Goodreads in prod.
+    `CREATE TABLE IF NOT EXISTS …` SQL for all three directly on Neon (same idempotent approach as
+    the admin migration). Do this **before** relying on analytics/Goodreads/Instagram in prod.
 - **Neon (production) has been migrated** to the admin schema. Because Neon already had the base
   tables (and a partial `role`/`banned` from earlier), the `0001` changes were applied as
   idempotent `ALTER TABLE … ADD COLUMN IF NOT EXISTS` / `CREATE TABLE IF NOT EXISTS` SQL run
@@ -397,22 +421,73 @@ drizzle.config.ts  components.json  .env / .env.example
     `onConflictDoUpdate`; enrichment fields **coalesce** so a later null can't wipe data, and the
     **longer review wins** (RSS truncates). `hidden` is never overwritten (preserves curation).
     Returns `{ imported, updated, total }`.
+  - **Cover resolution** — `resolveCoverUrl(book)` tries, in order: a working source image
+    (Goodreads), **Open Library by ISBN** (`?default=false` → 404 when missing, HEAD-checked),
+    **Open Library title/author search** (`search.json` → `cover_i`), then **Google Books**
+    (`volumes?q=intitle:…+inauthor:…` → `imageLinks`, upgraded to https). `enrichCovers(books)`
+    runs it over a batch with **concurrency 8** and is called in both import actions **before**
+    upsert, so the resolved URL is stored in `cover_url`. ⚠️ Unauthenticated **Google Books has a
+    low shared daily quota (429s easily)** — it's only the tertiary fallback; Open Library does the
+    heavy lifting. Nothing found → `cover_url` null → `BookCover` renders a generated text cover.
   - Queries: `getPublicReviews()` (read-shelf, not hidden, has rating/review → /reviews),
     `getPublicBookshelf()` (grouped read / currently-reading / to-read → /goodreads),
     `getAdminBooks()` (recent + total), `get/setGoodreadsUserId()` (stored in `app_settings` under
     **`goodreads_user_id`**).
 - **Admin server actions (`app/admin/actions.ts`, all `requireAdmin`-guarded):**
-  `importGoodreadsCsvAction` (reads the uploaded `File` from FormData, ≤10MB, parses + upserts),
-  `syncGoodreadsRssAction` (saves the numeric user id, fetches + parses + upserts),
-  `setBookHiddenAction(bookId, hidden)` (toggle public visibility). All `revalidatePath` `/admin`,
-  `/reviews`, `/goodreads`.
+  `importGoodreadsCsvAction` (reads the uploaded `File` from FormData, ≤10MB, parses + enriches
+  covers + upserts), `syncGoodreadsRssAction` (saves the numeric user id, fetches + parses +
+  enriches covers + upserts), `setBookHiddenAction(bookId, hidden)` (toggle public visibility).
+  The shared `revalidateBookPages()` revalidates `/admin`, `/reviews`, `/goodreads`, `/instagram`.
 - **Admin UI (`admin-goodreads.tsx`):** CSV-upload card + RSS-sync card (`useActionState`, file/text
-  inputs) + an imported-books table with per-row **show/hide** (Eye toggle) and a count badge.
-- **Public pages** consume the queries (§6): `/reviews` (review wall) and `/goodreads` (full shelf),
-  both using `components/book-cover.tsx` (`<img>` with placeholder fallback — chosen over
-  `next/image` to avoid configuring many external cover domains). Copy on `/goodreads` references
-  **"Riette"**.
+  inputs) + an imported-books table with a cover thumbnail, per-row **show/hide** (Eye toggle) and a
+  count badge.
+- **`BookCover` (`components/book-cover.tsx`, client):** plain `<img>` (chosen over `next/image` to
+  avoid configuring many external cover domains) with `onError` fallback. When given a **`title`**
+  (and optional `subtitle`) it renders a **generated text cover** (title + author + paw-print on a
+  cream card) instead of an icon — so a referenced book always shows a picture. Without `title` it
+  falls back to a neutral icon (e.g. Instagram thumbnails). Used by `/reviews`, `/goodreads`, the
+  Goodreads admin table, and Instagram cards.
+- **Public pages** consume the queries (§6): `/reviews` (review wall) and `/goodreads` (full shelf).
+  Copy on `/goodreads` references **"Riette"**.
 - ⚠️ Needs the `goodreads_book` table on whichever DB you run against (§8c).
+
+### 8g. Instagram import (@tiffanystales)
+- **Why Behold.so:** Meta **shut down the Instagram Basic Display API (Dec 2024)** and **personal
+  accounts can't be read by any API**; direct scraping of `instagram.com` returns **429** (verified).
+  The supported path is **Behold.so** — connect @tiffanystales once on behold.so (free, requires a
+  free **Professional/Creator** account), which exposes a stable **JSON feed** URL
+  (`https://feeds.behold.so/<id>`); Behold handles Meta's app/tokens/refresh. We fetch + import it
+  server-side, mirroring the Goodreads RSS flow. (Bright Data / scraper alternatives were considered
+  and **declined** — paid + ToS-gray + brittle.)
+- **One-time setup (outside code):** 1) set @tiffanystales to a Professional account, 2) connect it
+  on **behold.so** and create a JSON feed, 3) paste the feed URL into **Admin → Instagram → Sync**.
+  ⚠️ Behold's free tier refreshes ~daily, so a brand-new post can take up to a day to appear.
+- **Core (`lib/instagram.ts`):**
+  - `isBeholdUrl(url)` — **SSRF guard**: requires `https:` and a `behold.so` (or `*.behold.so`) host
+    before any fetch.
+  - `fetchBeholdFeed(url)` (`fetch` with `next: { revalidate: 3600 }`, throws on non-OK) +
+    `parseBeholdFeed(json)` → `NormalizedPost[]`: picks `imageUrl` = `sizes.medium ?? sizes.large ??
+    mediaUrl ?? thumbnailUrl`, `caption` = `prunedCaption || caption`, `postedAt` from `timestamp`;
+    skips posts with no `id`.
+  - `upsertInstagramPosts(posts)` — insert keyed by **`instagram_id` (unique)** with
+    `onConflictDoUpdate`; enrichment fields **coalesce**, **`hidden` never overwritten**. Returns
+    `{ imported, updated, total }`.
+  - Queries: `getPublicInstagramPosts(limit=48)` (not hidden, `posted_at desc`),
+    `getAdminPosts(limit=100)` (`{ posts, total }`), `get/setBeholdFeedUrl()` (stored in
+    `app_settings` under **`instagram_behold_feed_url`**). All read queries fail-soft → empty.
+- **Admin server actions (`app/admin/actions.ts`, `requireAdmin`-guarded):**
+  `syncInstagramAction` (rejects non-Behold URLs, saves the URL, fetches + parses + upserts, errors
+  on 0 posts), `setInstagramPostHiddenAction(postId, hidden)`. Both revalidate via
+  `revalidateBookPages()` (incl. `/instagram`).
+- **Admin UI (`admin-instagram.tsx`):** a **Connect Behold feed** card (`useActionState`, feed-URL
+  input + Sync now) + an imported-posts table (thumbnail via `BookCover`, caption snippet, date, like
+  count, per-row show/hide).
+- **Public:** the reusable `components/instagram-post-card.tsx` (square `BookCover` photo, clamped
+  caption, date, "View on Instagram" → `permalink`) is used on the **`/instagram`** page and the
+  Instagram section of **`/reviews`**. The shared `components/icons/instagram-icon.tsx` provides the
+  glyph (lucide lacks `Instagram`).
+- ⚠️ Needs the `instagram_post` table on whichever DB you run against (§8c). Images render via plain
+  `<img>` (through `BookCover`), so **no `next.config.ts` `images.remotePatterns`** is needed.
 
 ### Google OAuth (`.design/.specs/better_auth.md`)
 - Config in `lib/auth.ts` `socialProviders.google` (`prompt: "select_account"`), guarded by
@@ -500,9 +575,10 @@ docker exec tiffany_tales_db psql -U tiffany -d tiffany_tales -c 'SELECT email,r
 For Neon, query with any pg client using the Neon `DATABASE_URL`.
 
 ### Deploying to production
-1. Ensure Vercel env vars are set (§9). 2. Ensure Neon has the current schema (it does — §8c; for
-future schema changes apply them to Neon too, e.g. `IF NOT EXISTS` SQL or `db:push` against the
-Neon URL). 3. `git push origin main` → Vercel auto-builds & deploys.
+1. Ensure Vercel env vars are set (§9). 2. Ensure Neon has the current schema — it has the
+admin/`app_settings` schema but is **still missing `pageview` + `goodreads_book` + `instagram_post`**
+(§8c); apply schema changes to Neon too, e.g. `IF NOT EXISTS` SQL or `db:push` against the Neon URL.
+3. `git push origin main` → Vercel auto-builds & deploys.
 
 ---
 
@@ -517,7 +593,8 @@ Neon URL). 3. `git push origin main` → Vercel auto-builds & deploys.
 - **Base UI, not Radix** — check `components/ui/*` before assuming props. `AlertDialogAction` is a
   plain Button (doesn't auto-close); dialogs are controlled via state.
 - **`lucide-react@1.18.0`** is missing some icons (e.g. `Instagram`). Verify with
-  `node -e "console.log('X' in require('lucide-react'))"`.
+  `node -e "console.log('X' in require('lucide-react'))"`. For Instagram use the shared
+  `components/icons/instagram-icon.tsx` (inline SVG, forwards `className`/SVG props).
 - **Hydration warnings from browser extensions:** password managers (Psono, etc.) inject attributes
   onto `<input>`/`<form>` before React loads. `suppressHydrationWarning` is applied to the shared
   `Input` and to the auth/contact forms to silence these benign warnings.
@@ -532,9 +609,9 @@ Neon URL). 3. `git push origin main` → Vercel auto-builds & deploys.
   (diagnose with the §0 curl); `account_not_linked` = handled by account linking (§8). Keep the
   right OAuth client per environment (local `1rg`, prod `om1`).
 - **Schema changes need both DBs.** Any new column/table must be applied to **both** the local
-  Docker DB and Neon. Auth/admin columns 500 on session reads if missing; the newer `pageview` +
-  `goodreads_book` tables fail-soft (try/catch → empty) so prod won't crash, but stays empty until
-  Neon has them (§8c). Currently **Neon is missing both** of those tables.
+  Docker DB and Neon. Auth/admin columns 500 on session reads if missing; the newer `pageview`,
+  `goodreads_book` + `instagram_post` tables fail-soft (try/catch → empty) so prod won't crash, but
+  stay empty until Neon has them (§8c). Currently **Neon is missing all three** of those tables.
 - **Checkpoint skill** (`.claude/skills/checkpoint/`): say "checkpoint" / `/checkpoint` to lint +
   type-check + build, then commit everything (skips `.env`); it does **not** push.
 
@@ -549,6 +626,7 @@ Neon URL). 3. `git push origin main` → Vercel auto-builds & deploys.
 - `better_auth.md` — Better Auth Google provider reference.
 - `ADMIN_PLAN.md` — the admin-feature implementation plan.
 - `vercel-web-analytics-admin.md` — the web-analytics implementation plan (§8e).
+- `instagram-reviews-import.md` — the Instagram import implementation plan (§8g).
 
 ---
 
@@ -558,14 +636,16 @@ Done recently: **multi-page restructure**, **dashboard + profile pages**, **requ
 verification**, **Google account linking**, the **admin area**, **contact form wired to send**,
 local DB on **Docker**, **Neon migrated** to the admin schema (all deployed at `503b85a`); then
 **web analytics** (Vercel + first-party) and **password reset** (deployed at `7830344`); and most
-recently the **Goodreads import** (CSV + RSS → admin tab; public `/reviews` + `/goodreads` pages)
-— **built and verified locally but NOT yet committed/deployed** (§0, §14).
+recently the **Goodreads import**, the **Instagram import** (@tiffanystales via Behold.so), and
+**reliable multi-source book covers** — all **committed + pushed + deployed at `9ab830c`** (§0, §14).
 
-- [ ] **Commit + push the Goodreads feature** (run `checkpoint`), then it auto-deploys to Vercel.
-- [ ] **Apply `pageview` + `goodreads_book` to Neon** before relying on analytics/Goodreads in prod
-      (§8c) — `db:push` against the Neon URL or `CREATE TABLE IF NOT EXISTS` SQL.
-- [ ] (Optional) **Generate `drizzle/` migration files** for `pageview` + `goodreads_book` (so far
-      only applied via `db:push`).
+- [ ] **Apply `pageview` + `goodreads_book` + `instagram_post` to Neon** before relying on
+      analytics/Goodreads/Instagram in prod (§8c) — `db:push` against the Neon URL or
+      `CREATE TABLE IF NOT EXISTS` SQL.
+- [ ] **Connect the Instagram feed:** make @tiffanystales a Professional account, create a Behold
+      JSON feed, and paste its URL into **Admin → Instagram → Sync** (§8g).
+- [ ] (Optional) **Generate `drizzle/` migration files** for `pageview` + `goodreads_book` +
+      `instagram_post` (so far only applied via `db:push`).
 - [ ] **Verify a Resend domain** so welcome/verification/**reset** emails deliver to non-owner
       addresses, then set `RESEND_FROM` (or the admin "From address") + add `RESEND_API_KEY` to Vercel (§8b).
 - [ ] **Rotate the Neon DB password** (shared in plain text).
@@ -585,13 +665,10 @@ recently the **Goodreads import** (CSV + RSS → admin tab; public `/reviews` + 
   every push to `main`.
 - Recent history (newest last): … → **member dashboard + profile pages** (`2285385`) → **admin area
   + multi-page split + email verification** (`503b85a`) → **web analytics dashboard + password
-  reset** (`7830344`).
-- **State now:** `HEAD` = `origin/main` = `7830344`, **pushed and deployed**. ⚠️ **The Goodreads
-  import feature is UNCOMMITTED** in the working tree — modified: `app/(marketing)/reviews/page.tsx`,
-  `app/admin/actions.ts`, `app/admin/page.tsx`, `components/admin/admin-panel.tsx`,
-  `components/site-header.tsx`, `lib/schema.ts`, `package.json(+lock)`; untracked:
-  `app/(marketing)/goodreads/`, `components/admin/admin-goodreads.tsx`, `components/book-cover.tsx`,
-  `lib/goodreads.ts`. Run `checkpoint` to commit (lint + type-check + build all pass), then push to
-  deploy. (Also untracked: the two `.design/.specs/*.md` plan docs for analytics/Goodreads.)
+  reset** (`7830344`) → **Goodreads + Instagram imports + reliable book covers** (`9ab830c`).
+- **State now:** `HEAD` = `origin/main` = `9ab830c`, **pushed and deployed**; working tree clean.
+  The `9ab830c` checkpoint bundled the Goodreads import, the Instagram import, and the multi-source
+  cover work in one commit (it also included `goodreads_library_export-DESKTOP-0FJ40LV.csv` — a
+  personal Goodreads export accidentally left in the repo; safe to `git rm` + `.gitignore` if unwanted).
 - ⚠️ `.env` is gitignored and holds live secrets — keep it that way. `checkpoint` commits but does **not** push.
 ```
