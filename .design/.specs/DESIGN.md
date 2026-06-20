@@ -1,42 +1,51 @@
 # Tiffany's Tales — Design & Build Handoff
 
 > Single source of truth for continuing work after a context reset. Covers the
-> brand, design system, page structure, tech stack, auth/DB setup, and how to run.
+> brand, design system, page structure, tech stack, auth/DB setup, the admin
+> area, and how to run.
 > Last updated: 2026-06-20.
 
 ## 0. Where we are right now (restart anchor)
 
-- **Local dev:** fully working — email/password + Google sign-in, Neon DB.
-- **Production (`https://tiffany-s-tales.vercel.app`):** email/password works. Google
-  sign-in is **one manual step away**:
-  - ✅ Code fixed & deployed — the "Invalid origin" 403 and the localhost `redirect_uri`
-    are resolved (`lib/auth.ts` `trustedOrigins` + Vercel-aware `baseURL`; see §8). Production
-    now sends `redirect_uri=https://tiffany-s-tales.vercel.app/api/auth/callback/google`.
-  - ⛔ **Remaining blocker (only the owner can do this, in Google Cloud Console):** add that
-    exact redirect URI to OAuth client **`630431076354-om1jpc03…apps.googleusercontent.com`**
-    (the client whose ID is set in Vercel). Until then Google returns `redirect_uri_mismatch`.
-- **Registration emails (Resend):** on every sign-up the owner gets a notification and the new
-  member gets a welcome (§8). ✅ Admin mail to `arbeling@gmail.com` works; ⚠️ member emails need a
-  **verified Resend domain** (test mode only delivers to the account owner). ⚠️ **Committed locally
-  (`624460a`) but NOT yet pushed** — so it's not in production until `git push origin main` runs,
-  and `RESEND_API_KEY` is added to Vercel's env.
-- **Open cleanups:** duplicate `GOOGLE_*` keys in `.env` (§9), rotate the Neon DB password (§9).
-- **Verify production OAuth quickly** (no browser needed):
+- **Code state:** `HEAD` = `503b85a` on `main`, **pushed to `origin/main` and deployed to
+  Vercel**. Working tree clean (only `.env` differs locally, and it's gitignored).
+- **The app is now multi-page** (not one scrolling page): a `(marketing)` route group with
+  real routes (`/`, `/about`, `/benefits`, `/reviews`, `/contact`) plus `/login`, `/dashboard`,
+  `/profile`, and an admin area at `/admin`. The header nav are **route tabs** (§6).
+- **Auth:** email/password **with required email verification** + **Google OAuth**
+  (with trusted account-linking). See §8.
+- **Admin area** (`/admin`, owner only): list users, remove / pause (reversible ban) / promote
+  them, and edit the app's email addresses at runtime. Built on Better Auth's **admin plugin**.
+  `arbeling@gmail.com` is auto-granted the admin role. See §8a.
+- **Databases:**
+  - **Local dev now points at the local Docker Postgres** (`.env` `DATABASE_URL` =
+    `postgres://…@localhost:5432/tiffany_tales`). The Neon line is commented out. (This was
+    flipped from Neon during the admin build — see §9.)
+  - **Production uses Neon** (via Vercel env vars). Neon has been **migrated** to the new schema
+    (admin columns + `app_settings`) — see §8c.
+- **Production Google sign-in:** working. The prod redirect URI is registered on the prod OAuth
+  client `…om1jpc03…` (this was the long-standing manual blocker; now done). A real member
+  (`riettebeling@gmail.com`) has signed in via Google on prod.
+  - ⚠️ Note: that account has `role = null` (a regular member). Only `arbeling@gmail.com` is
+    auto-admin. Promote others from **/admin → Users**, or via `db:seed-admin` / SQL.
+- **Open cleanups / TODO:** verify a Resend domain for member emails; rotate the Neon DB
+  password; set `BETTER_AUTH_URL` correctly in Vercel; real billing. See §13.
+- **Quick prod OAuth check** (no browser): the returned `url`'s `client_id` + `redirect_uri` are
+  what Google receives.
   ```bash
   curl -s -X POST https://tiffany-s-tales.vercel.app/api/auth/sign-in/social \
     -H "Content-Type: application/json" -H "Origin: https://tiffany-s-tales.vercel.app" \
     -d '{"provider":"google","callbackURL":"/dashboard"}'
-  # inspect the returned `url` → its client_id and redirect_uri are what Google receives
   ```
 
 ---
 
 ## 1. What this is
 
-A marketing + SaaS site for **Tiffany's Tales Book Club** — a cosy, in-person
+A marketing + membership site for **Tiffany's Tales Book Club** — a cosy, in-person
 book club based in **Maidstone, United Kingdom** (£10/month membership). Modelled
-on the live site <https://www.tiffanystales.com/>. The app is a single marketing
-landing page plus an auth area (login / subscribe / dashboard).
+on the live site <https://www.tiffanystales.com/>. The app is a multi-page marketing
+site plus an auth area (login / subscribe / dashboard / profile) and an owner-only admin area.
 
 The brand voice is warm, friendly, community-first ("Join my pack today!" — the
 "pack" theme comes from the dog logo).
@@ -47,17 +56,17 @@ The brand voice is warm, friendly, community-first ("Join my pack today!" — th
 
 | Area | Choice | Notes |
 |---|---|---|
-| Framework | **Next.js 16.2.9** (App Router, RSC) | ⚠️ See §11 — this is a *modified* Next.js; read `node_modules/next/dist/docs/` before using unfamiliar APIs. |
+| Framework | **Next.js 16.2.9** (App Router, RSC) | ⚠️ See §11 — *modified* Next.js; read `node_modules/next/dist/docs/` before unfamiliar APIs. |
 | Runtime | React 19.2.4 | |
 | Styling | **Tailwind CSS v4** | Config via `@theme inline` in `app/globals.css` (no `tailwind.config.js`). |
-| UI components | **shadcn/ui** | style `base-nova`, base library = **Base UI** (`@base-ui/react`), NOT Radix. icon library = **lucide**. Config in `components.json`. |
-| Icons | `lucide-react` (^1.18.0) | ⚠️ This version does NOT export `Instagram` — an inline SVG is used in the footer. |
-| Toasts | `sonner` | `<Toaster />` mounted in `app/layout.tsx`. |
-| Auth | **Better Auth** (^1.6.18) | email + password **and Google OAuth** (now live — see §8), sessions. |
-| ORM | **Drizzle ORM** (^0.45.2) + `drizzle-kit` | both workflows available: `push` (dev) and generated **migration files** (`drizzle/`). |
-| Database | **Neon serverless Postgres** (active) / **PostgreSQL 17 via Docker** (offline dev) | `.env` `DATABASE_URL` points at Neon; the local Docker DB (`docker-compose.yml`, port 5432) is commented out but still available — see §9. |
-| Hosting | **Vercel** | Production at **`https://tiffany-s-tales.vercel.app`**; auto-deploys on push to `main`. Env vars set in the Vercel dashboard (not from `.env`). |
-| Email | **Resend** (`resend` SDK) | Registration emails (admin notification + member welcome) via `lib/email.ts`. Needs a verified domain to email non-owner addresses — see §8. |
+| UI components | **shadcn/ui** | style `base-nova`, base library = **Base UI** (`@base-ui/react`), NOT Radix. icons = **lucide**. Config in `components.json`. |
+| Icons | `lucide-react` (^1.18.0) | ⚠️ Does NOT export `Instagram` — inline SVG used in the footer. Verify an icon exists before importing. |
+| Toasts | `sonner` | `<Toaster />` in `app/layout.tsx`. |
+| Auth | **Better Auth** (^1.6.18) | email+password (**verification required**) + **Google OAuth** + **admin plugin**. See §8. |
+| ORM | **Drizzle ORM** (^0.45.2) + `drizzle-kit` | `push` (dev) and generated **migration files** (`drizzle/`). |
+| Database | **Postgres 17 via Docker** (active for local dev) / **Neon serverless Postgres** (production) | `.env` `DATABASE_URL` currently = local Docker; Neon is used in prod via Vercel env. See §9. |
+| Hosting | **Vercel** | Prod at **`https://tiffany-s-tales.vercel.app`**; auto-deploys on push to `main`. Env vars set in the Vercel dashboard. |
+| Email | **Resend** (`resend` SDK) | Verification, welcome, admin-notification, and contact emails via `lib/email.ts`. Addresses are runtime-editable (§8b). Needs a verified domain to email non-owner addresses. |
 | Fonts | `next/font/google` | Geist (sans) + Playfair Display (display/headings). |
 
 Package manager: **npm**. Path alias: `@/*` → project root (e.g. `@/components/...`, `@/lib/...`).
@@ -66,10 +75,9 @@ Package manager: **npm**. Path alias: `@/*` → project root (e.g. `@/components
 
 ## 3. Brand colours — purple + sage green
 
-The scheme is taken from the brand planner image (`Pink and Cream Girly Book
-Review Planner.jpg`): **plum purple** background with **sage green** panels and
-purple text on green. Defined as both custom tokens and shadcn semantic tokens in
-**`app/globals.css`** (`:root`).
+Scheme from the brand planner image (`Pink and Cream Girly Book Review Planner.jpg`):
+**plum purple** background with **sage green** panels and purple text on green. Defined as
+custom tokens + shadcn semantic tokens in **`app/globals.css`** (`:root`).
 
 ### Core hex values
 | Role | Hex | Token(s) |
@@ -86,66 +94,65 @@ purple text on green. Defined as both custom tokens and shadcn semantic tokens i
 | Border / input | `#e6d9e4` | `--border`, `--input` |
 
 ### How to use them
-- **Prefer shadcn semantic tokens** in components: `bg-primary`, `text-muted-foreground`,
-  `bg-secondary`, `bg-accent`, `bg-card`, `border`, etc.
-- The **custom brand tokens** (`bg-plum`, `text-cream`, `text-sage`, `from-primary`,
-  `to-plum`) are for the dark hero/feature/footer bands where semantic tokens don't fit.
-- Green badges/buttons with plum text = `variant="secondary"` (no manual colours needed).
-- Star ratings / accents on dark = `text-sage`.
+- **Prefer shadcn semantic tokens**: `bg-primary`, `text-muted-foreground`, `bg-secondary`,
+  `bg-accent`, `bg-card`, `border`, etc.
+- **Custom brand tokens** (`bg-plum`, `text-cream`, `text-sage`, `from-primary`, `to-plum`) are
+  for the dark hero/feature/footer bands where semantic tokens don't fit.
+- Green badges/buttons with plum text = `variant="secondary"`. Star ratings / accents on dark = `text-sage`.
 
-`--radius` is `0.75rem`. Dark-mode tokens exist (`.dark`) but the site renders **light only**
-(no `.dark` class is applied).
+`--radius` is `0.75rem`. Dark-mode tokens exist (`.dark`) but the site renders **light only**.
 
 ---
 
 ## 4. Typography
 - **Headings / display:** Playfair Display → `font-display` (also `--font-heading`).
 - **Body / UI:** Geist → `font-sans` (default).
-- Both wired in `app/layout.tsx` via `next/font/google` as CSS variables
-  (`--font-geist-sans`, `--font-playfair`).
+- Wired in `app/layout.tsx` via `next/font/google` as CSS variables (`--font-geist-sans`, `--font-playfair`).
 
 ---
 
 ## 5. Logo & images
 
-- **Logo:** `public/logo.jpg` — the official illustration: a white **chihuahua on an
-  open book** inside a gold-ringed circular badge ("What happens in bookclub / stays
-  in bookclub · Tiffany's Tales"), purple ground.
-  - ⚠️ **RULE: the logo must always be the hero centrepiece — never replace it with a
-    photo.** Rendered via a local `Logo` component (`next/image`, `rounded-full`).
-  - It's a square JPG with a purple background; it's clipped to a circle. For a cleaner
-    look later, get a **transparent PNG** version and swap it in.
-- **Photos** (free Unsplash stock, downloaded locally to `public/images/`):
-  - `community.jpg` → About section
-  - `reading-cozy.jpg` → Sittingbourne pack card
-  - `pack-maidstone.jpg` → Maidstone pack card
-  - `book-of-month.jpg` → Book of the Month "cover"
-  - `benefit-connection.jpg` → Benefits card "Real Connection"
-  - `benefit-discussion.jpg` → Benefits card "Lively Discussion"
-  - `benefit-story.jpg` → Benefits card "A Fresh Story"
-  - These are **placeholders** — swap for real meet-up/member photos (same filenames = drop-in).
+- **Logo:** `public/logo.jpg` — white **chihuahua on an open book** in a gold-ringed circular
+  badge, purple ground. Rendered via the shared **`Logo`** component (`components/logo.tsx`,
+  `next/image`, `rounded-full`).
+  - ⚠️ **RULE: the logo must always be the hero centrepiece — never replace it with a photo.**
+  - Square JPG with a purple bg, clipped to a circle. For a cleaner look, swap in a **transparent PNG**.
+- **Photos** (free Unsplash stock in `public/images/`) — all **placeholders** (same filenames = drop-in):
+  `community.jpg` (About), `reading-cozy.jpg` (Sittingbourne card), `pack-maidstone.jpg`
+  (Maidstone card), `book-of-month.jpg` (Book of the Month + dashboard), `benefit-connection.jpg`
+  / `benefit-discussion.jpg` / `benefit-story.jpg` (Benefits cards).
 
 ---
 
-## 6. Page structure (`app/page.tsx`)
+## 6. Page structure (multi-page, route tabs)
 
-Single-page marketing site, top → bottom. Section IDs match the nav anchors.
+The single marketing page was **split into separate routes** under a `(marketing)` route group
+whose layout (`app/(marketing)/layout.tsx`) provides the **`SiteHeader` + `SiteFooter`**.
+Clicking a nav tab navigates to a real page (no more scroll-to-anchor).
 
-1. **Header** (sticky) — logo + nav + `<AuthNav />` (session-aware: Log in / Join my pack, or My account).
-2. **Hero** (`#home`) — purple gradient band, real welcome copy, **logo medallion** centrepiece. Primary CTA "Join my pack today!" → **`/login`**.
-3. **About** (`#about`) — `community.jpg` + "Your literary sanctuary" copy + highlights.
-4. **Benefits** (`#benefits`) — 3 photo cards (Real Connection / Lively Discussion / A Fresh Story), each with a photo banner + an icon chip overlapping the bottom edge.
-5. **Packs** (`#packs`) — 2 pack cards with photos: **Sittingbourne** & **Maidstone**.
-   ⚠️ "Pamper Night with a book" was **removed** (no longer supported) — do not re-add.
-6. **Book of the Month** (`#book-of-the-month`) — deep-plum panel, photo cover.
-7. **FAQ** — accordion, 3 real Q&As (monthly + Discord; suggestions welcome; £10/month).
-8. **Book Reviews** (`#reviews`) — purple quote card (real member testimonial) + planner-style
-   sage-green review card with a 5-star rating (Title/Author/Year fields, echoes the planner).
-9. **Contact** (`#contact`) — `<ContactForm />` (Name/Email/Message + "Send me a copy" checkbox,
-   sonner toast on submit; **not wired to a backend yet** — it just toasts and resets).
-10. **Footer** — deep plum, logo, location, Instagram link, copyright.
+**Marketing routes** (`(marketing)` group):
+1. **`/`** (Home) — Hero (logo medallion, "Join my pack today!" → `/login`) + "Find Your Pack"
+   (Sittingbourne & Maidstone cards) + Book of the Month panel. ⚠️ "Pamper Night" was removed — don't re-add.
+2. **`/about`** — "Your literary sanctuary" + FAQ accordion (monthly + Discord; suggestions; £10/month).
+3. **`/benefits`** — 3 photo cards (Real Connection / Lively Discussion / A Fresh Story).
+4. **`/reviews`** — purple testimonial quote card + planner-style 5-star review card.
+5. **`/contact`** — `<ContactForm />`, **wired to actually send** (server action → Resend) to the
+   configured contact recipient, reply-to = sender, optional "send me a copy". See §8b.
 
-Nav links: Home · About · Book Club Benefits · Book Reviews · Contact.
+**Auth/member routes** (standalone, outside the group):
+- **`/login`** — Tabs: Subscribe | Log in, + "Continue with Google" (when `isGoogleEnabled`).
+  Redirects to `/dashboard` if already authed.
+- **`/dashboard`** — protected member home: welcome + stat cards (member since, membership, pack)
+  + Book of the Month + next meet-up.
+- **`/profile`** — protected: editable name + photo (`authClient.updateUser`), read-only account
+  info (email + verified badge, member since, linked sign-in providers).
+- **`/admin`** — owner-only (see §8a).
+
+**Header nav** (`components/site-header.tsx`, client, route-based active state via `usePathname`):
+- Always: Home · About · Book Club Benefits · Book Reviews · Contact.
+- When signed in: **Dashboard · Profile** (and **Admin** when `role === "admin"`), plus the avatar
+  `UserMenu`. Logged out: Log in / Join my pack. Mobile = `Sheet` with the same links.
 
 ---
 
@@ -153,312 +160,304 @@ Nav links: Home · About · Book Club Benefits · Book Reviews · Contact.
 
 ```
 app/
-  globals.css                 # Tailwind v4 theme + colour tokens (EDIT COLOURS HERE)
-  layout.tsx                  # fonts, metadata, <Toaster />
-  page.tsx                    # the marketing landing page
-  login/page.tsx              # /login — Tabs: Subscribe | Log in (redirects if already authed)
-  dashboard/page.tsx          # /dashboard — protected; shows captured user details
-  api/auth/[...all]/route.ts  # Better Auth handler (toNextJsHandler) — serves /api/auth/*
+  globals.css                       # Tailwind v4 theme + colour tokens (EDIT COLOURS HERE)
+  layout.tsx                        # fonts, metadata, <Toaster /> (root layout)
+  (marketing)/
+    layout.tsx                      # SiteHeader + children + SiteFooter
+    page.tsx                        # Home (hero + packs + book of the month)
+    about/page.tsx                  # About + FAQ
+    benefits/page.tsx               # Benefits cards
+    reviews/page.tsx                # Testimonial + review card
+    contact/page.tsx                # Contact page
+    contact/actions.ts              # "use server" submitContact -> sendContactEmail
+  login/page.tsx                    # /login — Tabs + Google (redirects if authed)
+  dashboard/page.tsx                # /dashboard — protected member home
+  profile/page.tsx                  # /profile — protected; editable profile + account info
+  admin/page.tsx                    # /admin — requireAdmin(); users + email settings
+  admin/actions.ts                  # "use server" updateSettingsAction (admin-guarded)
+  api/auth/[...all]/route.ts        # Better Auth handler (serves /api/auth/* incl. /admin/*)
 components/
-  site-header.tsx             # sticky header: logo + desktop nav + auth + mobile Sheet menu (client)
-  contact-form.tsx            # marketing contact form (client)
+  site-header.tsx                   # sticky header: route tabs + auth + mobile Sheet (client)
+  site-footer.tsx                   # deep-plum footer (logo, explore links, Instagram)
+  logo.tsx                          # shared Logo (next/image)
+  contact-form.tsx                  # contact form (client) -> submitContact server action
+  admin/
+    admin-panel.tsx                 # Tabs: Users | Email settings (client)
+    admin-users-table.tsx           # user table + per-row actions + confirm AlertDialog (client)
+    admin-settings-form.tsx         # edit the 3 email addresses (client)
   auth/
-    auth-nav.tsx              # legacy header auth cluster (client) — superseded by site-header
-    user-menu.tsx             # logged-in avatar + dropdown (UserMenu, UserAvatar) (client)
-    login-form.tsx            # signIn.email (client)
-    signup-form.tsx           # signUp.email — captures name/email/password (client)
-    sign-out-button.tsx       # signOut (client); accepts className
-    google-button.tsx         # signIn.social google (client); shown when isGoogleEnabled
-  ui/                         # shadcn components (button, card, accordion, tabs, field, sheet,
-                              #   avatar, dropdown-menu, skeleton, spinner, …)
+    user-menu.tsx                   # avatar + dropdown (Dashboard/Profile/Sign out) (client)
+    login-form.tsx                  # signIn.email; handles 403 unverified (client)
+    signup-form.tsx                 # signUp.email; shows "check your email" (client)
+    profile-form.tsx                # authClient.updateUser name/image (client)
+    sign-out-button.tsx             # signOut (client)
+    google-button.tsx               # signIn.social google (client)
+    auth-nav.tsx                    # LEGACY — superseded by site-header (unused)
+  ui/                               # shadcn/Base UI: button card accordion badge textarea label
+                                    #   separator sonner field checkbox tabs spinner skeleton sheet
+                                    #   avatar dropdown-menu input table alert-dialog
 lib/
-  auth.ts                     # betterAuth() config + isGoogleEnabled + getSafeSession() (server)
-  auth-client.ts              # createAuthClient (browser)
-  db.ts                       # drizzle + pg Pool (connectionString = DATABASE_URL)
-  email.ts                    # Resend client + sendRegistrationEmails() (admin + welcome)
-  schema.ts                   # Better Auth tables (user/session/account/verification)
-  utils.ts                    # cn()
+  auth.ts                           # betterAuth() + admin plugin + ADMIN_EMAIL + getSafeSession()
+  admin.ts                          # requireAdmin() guard + isAdmin()
+  auth-client.ts                    # createAuthClient({ plugins: [adminClient()] })
+  db.ts                             # drizzle + pg Pool (connectionString = DATABASE_URL)
+  email.ts                          # Resend: verification / welcome / admin-notice / contact emails
+  settings.ts                       # app_settings get/update (runtime email config, env fallback)
+  schema.ts                         # Better Auth tables + admin columns + app_settings
+  utils.ts                          # cn()
+scripts/
+  seed-admin.mjs                    # promote an existing owner row to admin (npm run db:seed-admin)
 drizzle/
-  0000_better_auth_init.sql   # generated migration for the auth tables
-  meta/                       # drizzle-kit journal + snapshot
-public/
-  logo.jpg                    # brand logo (do not replace with a photo)
-  images/                     # section photos (placeholders)
-docker-compose.yml            # Postgres 17 (local/offline dev only — Neon is the active DB)
-drizzle.config.ts             # drizzle-kit config
-components.json               # shadcn config
-.env / .env.example           # secrets (.env is gitignored — never shipped to Vercel; see §9)
-.claude/skills/checkpoint/    # installed "checkpoint" skill (lint+type-check+build, then commit)
-.agents/.skills/              # source skills (checkpoint, shadcn, playwright-cli, security-scanner, …)
+  0000_better_auth_init.sql         # base auth tables
+  0001_tough_firedrake.sql          # admin columns + app_settings
+  meta/                             # drizzle-kit journal + snapshots
+public/  logo.jpg, images/          # brand logo (don't replace) + section photos (placeholders)
+docker-compose.yml                  # Postgres 17 (local dev DB — container tiffany_tales_db:5432)
+drizzle.config.ts  components.json  .env / .env.example
+.claude/skills/checkpoint/          # "checkpoint" skill (lint+type-check+build, then commit; no push)
+.design/.specs/ADMIN_PLAN.md        # the admin-feature implementation plan (reference)
 ```
 
 ---
 
 ## 8. Auth & database
 
-- **Stack:** Better Auth (email+password, `autoSignIn: true`, `minPasswordLength: 8`,
-  `nextCookies()` plugin) **+ Google OAuth** → Drizzle adapter (`provider: "pg"`) → Postgres
-  (**Neon** in `.env`; local Docker available offline).
-- **Tables** (`lib/schema.ts`, snake_case columns): `user`, `session`, `account`
-  (stores hashed password under `provider_id = 'credential'`, and Google identities under
-  `provider_id = 'google'` with access/refresh/id tokens + scope), `verification`.
-- **Captured at sign-up:** name, email, password (hashed — verified, never plaintext).
-  Google sign-in captures name, email, and avatar (`user.image`) — no schema change needed.
-- **Flows:** `/login` Tabs → `authClient.signUp.email` / `signIn.email` → redirect to
-  `/dashboard`. Google → `authClient.signIn.social({ provider: "google", callbackURL: "/dashboard" })`.
-  `/login` and `/dashboard` read the session server-side via **`getSafeSession()`** (`lib/auth.ts`),
-  which wraps `auth.api.getSession` in try/catch and returns `null` on DB failure — so an
-  unreachable database shows the login form instead of crashing with a Next.js error digest.
-- **Logged-in UI:** the header shows an **avatar** (`components/auth/user-menu.tsx`) — Google
-  photo (`user.image`) or initials fallback — opening a dropdown with name/email, "My account"
-  (`/dashboard`), and "Sign out". The mobile sheet shows a profile row + sign-out.
-- **Verified working** (this session): email sign-up persists a row, login issues a session,
-  wrong password → 401; **Google social endpoint returns a valid Google auth URL** with the
-  correct `client_id`, `redirect_uri` (`/api/auth/callback/google`), `scope=email profile openid`,
-  PKCE and `prompt=select_account`.
+- **Stack:** Better Auth (`emailAndPassword` with `minPasswordLength: 8` and
+  **`requireEmailVerification: true`**) **+ Google OAuth** **+ admin plugin** **+ account
+  linking** → Drizzle adapter (`provider: "pg"`) → Postgres. `nextCookies()` is **last** in the
+  plugins array; `admin()` goes before it.
+- **Tables** (`lib/schema.ts`, snake_case columns):
+  - `user`: id, name, email (unique), email_verified, image, created_at, updated_at, **+ admin
+    plugin fields** `role`, `banned`, `ban_reason`, `ban_expires` (all nullable).
+  - `session`: + `impersonated_by`.
+  - `account`: credential (hashed password under `provider_id='credential'`) + Google identities
+    (`provider_id='google'`, tokens + scope).
+  - `verification`: email-verification tokens.
+  - **`app_settings`**: key/value table for runtime-editable email addresses (§8b).
+- **Email verification flow:** sign-up does **not** create a session. `emailVerification`
+  (`sendOnSignUp: true`, `autoSignInAfterVerification: true`, `expiresIn: 3600`) sends a Resend
+  verification email; clicking the link verifies + signs in. `signup-form` shows a "check your
+  inbox" panel; `login-form` shows a friendly message on the 403-unverified error. Google sign-in
+  is exempt (Google verifies the email).
+- **Account linking** (`account.accountLinking`): `enabled: true`, `trustedProviders: ["google"]`
+  — so a Google sign-in **links to an existing email/password account** with the same email
+  instead of failing with `account_not_linked`. Safe because Google verifies the email.
+- **`getSafeSession()`** (`lib/auth.ts`) wraps `auth.api.getSession` in try/catch → returns `null`
+  on DB failure, so pages render the login form instead of crashing. Used by `/login`,
+  `/dashboard`, `/profile`, and (via `requireAdmin`) `/admin`.
+- **`baseURL` + `trustedOrigins`** (unchanged production fix): `trustedOrigins` lists
+  `http://localhost:3000`, `https://tiffany-s-tales.vercel.app`, `https://tiffany-s-tales-*.vercel.app`.
+  `baseURL` ignores a localhost value when running on Vercel (uses `VERCEL_PROJECT_PRODUCTION_URL`).
 
-### Google OAuth (`.design/.specs/better_auth.md`) — **enabled**
-- Config lives in `lib/auth.ts` under `socialProviders.google` (`prompt: "select_account"`),
-  **guarded by `isGoogleEnabled`** — it activates only when both `GOOGLE_CLIENT_ID` and
-  `GOOGLE_CLIENT_SECRET` are set, so the app still builds/runs on email-password until then.
-  Both are now set in `.env`, so the button is live locally.
-- UI: `components/auth/google-button.tsx` ("Continue with Google"), shown above the tabs on
-  `/login` only when `isGoogleEnabled` is true. (Next.js dev **reloads `.env`** on change, so a
-  full restart usually isn't needed locally; production needs a redeploy.)
+### 8a. Admin area (Better Auth admin plugin)
+- **Plugin config:** `admin({ defaultRole: "user", adminRoles: ["admin"] })`. The plugin auto-serves
+  `/api/auth/admin/*` (listUsers, setRole, banUser, unbanUser, removeUser, …) and adds `role`/`banned`
+  to the session user. Client side: `adminClient()` in `lib/auth-client.ts` → `authClient.admin.*`.
+- **Bootstrap:** `ADMIN_EMAIL` (env, default `arbeling@gmail.com`, lower-cased). A
+  `databaseHooks.user.create.before` hook stamps `role: "admin"` when a new user's email matches
+  `ADMIN_EMAIL` (the `role` field is `input:false`, so only a server hook can set it). For a
+  **pre-existing** owner row, run **`npm run db:seed-admin`** (`scripts/seed-admin.mjs`, idempotent).
+- **Guard:** `requireAdmin()` (`lib/admin.ts`) — redirects non-authed to `/login`, non-admins to
+  `/dashboard`. This is the real protection; the header "Admin" link is cosmetic.
+- **`/admin` page** (`app/admin/page.tsx`, server): SSR-fetches users via
+  `auth.api.listUsers({ query: { limit: 200 }, headers })` + an `account` join for the Provider
+  column + `getSettings()`. Renders `AdminPanel` (Tabs: **Users** | **Email settings**).
+  - **Users tab:** table (member, provider, joined, role, status) + per-row dropdown → confirm
+    `AlertDialog` → **Make/Revoke admin** (`setRole`), **Pause/Resume** (`banUser`/`unbanUser` —
+    reversible, indefinite), **Remove** (`removeUser`). Own-row Pause/Remove disabled. Mutations
+    `router.refresh()` to re-fetch.
+  - **Email settings tab:** edits the 3 addresses (§8b) via an admin-guarded server action.
 
-#### `baseURL` + `trustedOrigins` (the production fix — `lib/auth.ts`)
-Two Better-Auth concerns broke production sign-in and are now handled in code:
-- **`trustedOrigins`** (CSRF/origin whitelist): Better Auth trusts only `baseURL` by default, so
-  POSTs from the Vercel domain were rejected with **403 `Invalid origin`**. We now pass an explicit
-  list: `http://localhost:3000`, `https://tiffany-s-tales.vercel.app`, and
-  `https://tiffany-s-tales-*.vercel.app` (preview deployments).
-- **`baseURL` resolution**: Vercel's env had `BETTER_AUTH_URL=http://localhost:3000` left over,
-  which made Better Auth build the OAuth `redirect_uri` against **localhost** → Google
-  `redirect_uri_mismatch`. The code now derives the URL so a localhost value is *ignored on Vercel*:
-  ```ts
-  const vercelProductionURL = process.env.VERCEL_PROJECT_PRODUCTION_URL
-    ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : undefined;
-  const configuredURL = process.env.BETTER_AUTH_URL;
-  const baseURL =
-    process.env.VERCEL && (!configuredURL || configuredURL.includes("localhost"))
-      ? vercelProductionURL          // on Vercel, never use localhost
-      : configuredURL ?? vercelProductionURL;
-  ```
-  Net effect: locally `baseURL` = `http://localhost:3000`; on Vercel it's the real production
-  domain regardless of the stale env var. (Cleaner long-term: also set `BETTER_AUTH_URL` correctly
-  in the Vercel dashboard, but the code no longer depends on it.)
+### 8b. Runtime-editable email settings (`lib/settings.ts` + `lib/email.ts`)
+- `lib/settings.ts`: `getSettings()` / `updateSettings()` over `app_settings`. Read on each call
+  (small PK select), DB value **?? env fallback ?? default**, wrapped in try/catch so a DB error
+  falls back to env and never breaks email. Three settings:
+  - `emailFrom` ← DB ?? `RESEND_FROM` ?? `"Tiffany's Tales <onboarding@resend.dev>"`
+  - `adminNotificationRecipient` ← DB ?? `ADMIN_EMAIL` ?? `arbeling@gmail.com`
+  - `contactRecipient` ← DB ?? `CONTACT_EMAIL` ?? `adminNotificationRecipient`
+- `lib/email.ts` reads these **per send** (no module-load constants). Functions: `sendVerificationEmail`,
+  `sendRegistrationEmails` (admin notice + member welcome), `sendContactEmail` (to contact recipient,
+  reply-to = sender, optional copy). All never throw; no-op when `RESEND_API_KEY` is unset.
+- ⚠️ **Resend domain limitation** (unchanged): in test mode (no verified domain, from
+  `onboarding@resend.dev`) Resend only delivers to the **account owner** (`arbeling@gmail.com`).
+  Member welcomes / verification to other addresses are **rejected (403)** until a domain is verified
+  at <https://resend.com/domains> and `RESEND_FROM` (or the admin "From address") is set to it.
 
-- **Remaining setup to complete the round-trip** (these live in Google, not the code):
-  - **Google Cloud Console → Credentials → the OAuth client whose ID is set in Vercel
-    (`630431076354-om1jpc03…apps.googleusercontent.com`) → Authorized redirect URIs** must
-    include — exactly, no trailing slash:
-    - `http://localhost:3000/api/auth/callback/google` (local)
-    - `https://tiffany-s-tales.vercel.app/api/auth/callback/google` (production)
-    Missing/mismatched → Google returns `Error 400: redirect_uri_mismatch`. **This is the current
-    production blocker** (see §0).
-  - **OAuth consent screen**: while in **Testing** mode, add each tester (e.g. `arbeling@gmail.com`)
-    under **Test users**, or Google blocks sign-in ("access blocked / app not verified").
-  - ⚠️ Two Google OAuth clients are floating around (`…1rgqosoo…` and `…om1jpc03…`). Production
-    uses **`…om1jpc03…`** — register redirect URIs on *that* one and keep `.env`/Vercel consistent.
+### 8c. Schema changes & migrations
+- Local Docker DB: edit `lib/schema.ts`, then `npm run db:push` (diffs and applies; the dev workflow).
+- Generated migrations live in `drizzle/` (`0000` base, `0001` admin columns + `app_settings`).
+- **Neon (production) has been migrated** to the admin schema. Because Neon already had the base
+  tables (and a partial `role`/`banned` from earlier), the `0001` changes were applied as
+  idempotent `ALTER TABLE … ADD COLUMN IF NOT EXISTS` / `CREATE TABLE IF NOT EXISTS` SQL run
+  directly against the Neon `DATABASE_URL` (not via `drizzle-kit migrate`, which would have tripped
+  on the existing base tables). `public.user` now has role/banned/ban_reason/ban_expires,
+  `public.session` has impersonated_by, and `public.app_settings` exists.
+  - ℹ️ Neon also has a built-in **`neon_auth` schema** with its own `user` table — unrelated to
+    this app, which uses **`public`**. Don't be confused by it when querying.
 
-### Registration emails (Resend) — `lib/email.ts`
-- On every new registration (email/password **and** Google), Better Auth's
-  `databaseHooks.user.create.after` calls `sendRegistrationEmails({ name, email })`, which sends:
-  1. an **admin notification** to `ADMIN_EMAIL` (default `arbeling@gmail.com`), and
-  2. a **welcome email** to the new member.
-- Failure-tolerant: `Promise.allSettled` + a no-op when `RESEND_API_KEY` is unset, so a mail error
-  is logged but **never breaks sign-up**. Sends are awaited (not fire-and-forget) so they aren't
-  dropped when a serverless function freezes after responding.
-- ⚠️ **Domain limitation.** From defaults to `onboarding@resend.dev`; in Resend test mode (no
-  verified domain) mail only delivers to the **account owner** (`arbeling@gmail.com`). So the admin
-  notification works now, but **member welcomes are rejected until a domain is verified**. To
-  enable: verify a domain at <https://resend.com/domains>, then set
-  `RESEND_FROM="Tiffany's Tales <hello@yourdomain>"` (locally and in Vercel).
-- Env: `RESEND_API_KEY` (required to send), `ADMIN_EMAIL` (optional), `RESEND_FROM` (optional).
-
-### Schema changes
-After editing `lib/schema.ts` (or adding Better Auth plugins), re-sync:
-```bash
-npm run db:push        # drizzle-kit auto-loads DATABASE_URL from .env (pushes to whatever it points at)
-npm run db:generate    # OR generate a migration file into drizzle/
-npm run db:migrate     # then apply generated migrations
-```
-(For Better Auth plugins, you may also run `npx @better-auth/cli@latest generate` to refresh schema.)
+### Google OAuth (`.design/.specs/better_auth.md`)
+- Config in `lib/auth.ts` `socialProviders.google` (`prompt: "select_account"`), guarded by
+  `isGoogleEnabled` (both `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` set). UI:
+  `components/auth/google-button.tsx`, shown on `/login`.
+- ⚠️ **Two OAuth clients exist:** `…1rgqosoo…` (has the **localhost** redirect URI registered →
+  used for **local** dev) and `…om1jpc03…` (has the **production** redirect URI → used on **Vercel**).
+  In `.env` the **prod (`om1`) pair is commented out** so local dev uses the `1rg` client. Production
+  uses `om1` via Vercel env vars. Both redirect URIs are now registered, so Google sign-in works in
+  both environments.
+- Diagnose what's sent with the curl in §0; `redirect_uri_mismatch` = the sent `redirect_uri` isn't
+  registered on that client; `account_not_linked` is handled by account linking (above).
 
 ---
 
-## 9. Environment variables (`.env`, gitignored — see `.env.example`)
+## 9. Environment variables (`.env`, gitignored)
 
+Active `.env` shape (local dev):
 ```
-# Local Postgres (docker-compose.yml) — commented out; uncomment to dev offline
-# DATABASE_URL=postgres://tiffany:tiffany_dev_pw@localhost:5432/tiffany_tales
-
-# Neon serverless Postgres — the ACTIVE database
-DATABASE_URL=postgresql://<neon-user>:<pw>@<endpoint>-pooler.<region>.aws.neon.tech/neondb?sslmode=require
+# Local Postgres (docker-compose.yml) — ACTIVE for local dev
+DATABASE_URL=postgres://tiffany:tiffany_dev_pw@localhost:5432/tiffany_tales
+# Neon (production) — commented out locally; used in prod via Vercel env
+# DATABASE_URL=postgresql://<user>:<pw>@<endpoint>-pooler.<region>.aws.neon.tech/neondb?sslmode=require
 
 BETTER_AUTH_SECRET=<32+ char secret>
-BETTER_AUTH_URL=http://localhost:3000          # prod: https://<prod-domain>
-GOOGLE_CLIENT_ID=<google web client id>        # set → enables Google sign-in
-GOOGLE_CLIENT_SECRET=<google web client secret>
+BETTER_AUTH_URL=http://localhost:3000
+GOOGLE_CLIENT_ID=<1rg… local client>          # local client (localhost redirect registered)
+GOOGLE_CLIENT_SECRET=<…>
+# GOOGLE_CLIENT_ID=<om1… prod client>          # commented out — prod uses Vercel env
+# GOOGLE_CLIENT_SECRET=<…>
+RESEND_API_KEY=<re_…>
+ADMIN_EMAIL=arbeling@gmail.com                 # grants admin role + default admin-notice recipient
+# RESEND_FROM=Tiffany's Tales <…@verified-domain>   # optional sender override
+# CONTACT_EMAIL=…                              # optional contact recipient (defaults to ADMIN_EMAIL)
 ```
 
-- **Which DB is live is decided here.** `.env` currently points `DATABASE_URL` at **Neon**, so
-  even `npm run dev` talks to Neon. To develop against the local Docker DB instead, **uncomment
-  the local line and comment out the Neon line**, then restart the dev server.
-- ⚠️ **Throwaway local-dev values.** The DB password + secret in the file are local-dev only —
-  use real secrets management before relying on them. **Rotate any DB password shared in plain
-  text** (the Neon password has been). Never commit a real `.env`.
-- ⚠️ **No duplicate keys.** `.env` files are last-value-wins — if `GOOGLE_CLIENT_ID` /
-  `GOOGLE_CLIENT_SECRET` appear more than once, only the **last** pair is used. Keep a single
-  active pair (use separate dev vs prod **OAuth clients** if you want, but set them per
-  environment, not stacked in one file).
+- **Which DB is live is decided here.** Currently **local Docker**. To dev against Neon, flip the
+  commented lines and restart the dev server. ⚠️ The app email/recipient values in `app_settings`
+  (set via the admin UI) **override** `RESEND_FROM` / `ADMIN_EMAIL` / `CONTACT_EMAIL` at runtime.
+- ⚠️ **Throwaway local-dev secrets.** DB password + auth secret in the file are local-dev only.
+  **Rotate the Neon DB password** (it has been shared in plain text). Never commit a real `.env`.
+- ⚠️ **`.env` is last-value-wins** — keep a single active `GOOGLE_*` pair (the prod pair is
+  commented out, so the local `1rg` pair is active).
 
 ### Production (Neon + Vercel)
-**`.env` is gitignored and is NEVER shipped to Vercel.** Vercel only gets the variables you set
-in its dashboard, so the deployed app fails (e.g. *tables exist on Neon but signups don't insert*)
-when they're missing. Set, in **Vercel → Settings → Environment Variables (Production)**:
-- `DATABASE_URL` → the Neon connection string (`...neon.tech/neondb?sslmode=require`)
-- `BETTER_AUTH_SECRET` → 32+ char secret. **Required in production** — Better Auth *throws* if
-  it's unset, so every signup/login fails before touching the DB.
-- `BETTER_AUTH_URL` → ideally the **production https domain** (NOT `localhost`). ⚠️ A leftover
-  `http://localhost:3000` here is what broke production Google sign-in (localhost `redirect_uri`).
-  `lib/auth.ts` now **overrides a localhost/unset value on Vercel** (using
-  `VERCEL_PROJECT_PRODUCTION_URL`), so the deploy works even if this is wrong — but setting it
-  correctly is still cleaner.
-- `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` (prod uses the `…om1jpc03…` client) + add the prod
-  redirect URI `https://tiffany-s-tales.vercel.app/api/auth/callback/google` in Google Cloud Console.
-- `RESEND_API_KEY` (+ optional `ADMIN_EMAIL`, `RESEND_FROM`) for registration emails — otherwise
-  the deployed app silently skips them. ⚠️ `.env.example` is also gitignored (`.env*`), so these
-  vars aren't in the repo template — copy them from a teammate or the dashboard.
-
-Then **redeploy** — Vercel only applies env-var changes to a *new* deployment. (Preview
-deployments have changing URLs; add them to a `trustedOrigins` array in `lib/auth.ts` if you test
-auth on previews.) The Neon DB needs the auth tables created once (`db:push`/`db:migrate` against
-the Neon `DATABASE_URL`).
+**`.env` is gitignored and NEVER shipped to Vercel.** Set in **Vercel → Settings → Environment
+Variables (Production)**:
+- `DATABASE_URL` → Neon connection string.
+- `BETTER_AUTH_SECRET` → 32+ char secret (**required** — Better Auth throws if unset).
+- `BETTER_AUTH_URL` → ideally the prod https domain (code already overrides a stale localhost value on Vercel).
+- `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` → the **`om1`** prod client.
+- `RESEND_API_KEY` (+ optional `ADMIN_EMAIL`, `RESEND_FROM`, `CONTACT_EMAIL`).
+- Then **redeploy** (Vercel applies env changes only to a new deployment).
 
 ---
 
 ## 10. How to run
 
 ```bash
-# Neon is the active DB by default, so docker is only needed for offline/local dev:
-docker compose up -d     # (optional) start local Postgres (container: tiffany_tales_db, port 5432)
+docker compose up -d     # start local Postgres (container tiffany_tales_db, port 5432)
 npm install              # if deps not installed
-npm run db:push          # create/sync the auth tables (first time / after schema change)
-npm run dev              # http://localhost:3000  (uses whatever DATABASE_URL points at — Neon by default)
+npm run db:push          # sync lib/schema.ts -> local DB (first time / after schema change)
+npm run db:seed-admin    # (optional) promote an existing arbeling@gmail.com row to admin
+npm run dev              # http://localhost:3000  (uses local Docker DB per .env)
 ```
 **DB scripts** (drizzle-kit auto-loads `DATABASE_URL` from `.env`):
 ```bash
-npm run db:push      # sync lib/schema.ts -> DB (the dev workflow)
-npm run db:studio    # open Drizzle Studio (browser GUI for the tables)
-npm run db:generate  # generate SQL migration files into drizzle/
-npm run db:migrate   # apply generated migration files
+npm run db:push       # sync schema -> DB (dev workflow)
+npm run db:studio     # Drizzle Studio GUI
+npm run db:generate   # generate SQL migration files
+npm run db:migrate    # apply generated migrations
+npm run db:seed-admin # node --env-file=.env scripts/seed-admin.mjs (promote owner to admin)
 ```
-Quality gates (all currently pass):
+**Quality gates** (all pass at `HEAD`):
 ```bash
 npm run lint
 npx tsc --noEmit
 npm run build
 ```
-Useful DB peek (local Docker DB):
+**Peek the local DB:**
 ```bash
 docker exec tiffany_tales_db psql -U tiffany -d tiffany_tales -c '\dt'
-docker exec tiffany_tales_db psql -U tiffany -d tiffany_tales -c 'SELECT name,email,created_at FROM "user";'
+docker exec tiffany_tales_db psql -U tiffany -d tiffany_tales -c 'SELECT email,role,banned,email_verified FROM "user";'
 ```
-For Neon, query via any pg client using the Neon `DATABASE_URL`.
+For Neon, query with any pg client using the Neon `DATABASE_URL`.
 
 ### Deploying to production
-1. Set the production env vars in the **Vercel dashboard** (see §9 — Neon `DATABASE_URL`,
-   `BETTER_AUTH_URL` = prod domain, `BETTER_AUTH_SECRET`, Google creds if used). They are NOT
-   taken from the committed repo because `.env` is gitignored.
-2. Create the tables in the Neon DB once: `npm run db:push` with `DATABASE_URL` pointing at Neon
-   (PowerShell: `$env:DATABASE_URL="<neon-url>"; npm run db:push`).
-3. Deploy / redeploy. `/login` and `/dashboard` read the session via `getSafeSession()`
-   (`lib/auth.ts`), which returns `null` instead of throwing if the DB is unreachable — so the
-   login form still renders rather than showing a Next.js error digest.
+1. Ensure Vercel env vars are set (§9). 2. Ensure Neon has the current schema (it does — §8c; for
+future schema changes apply them to Neon too, e.g. `IF NOT EXISTS` SQL or `db:push` against the
+Neon URL). 3. `git push origin main` → Vercel auto-builds & deploys.
 
 ---
 
 ## 11. Conventions & gotchas
 
-- **Modified Next.js:** `AGENTS.md` warns this Next.js has breaking changes vs. training
-  data. Read the relevant guide in `node_modules/next/dist/docs/` before using unfamiliar
-  APIs. `headers()`/`cookies()` are **async**.
-- **shadcn rules** (from `.agents/.skills/shadcn`): use semantic colour tokens (not raw
-  `bg-purple-500`); `gap-*` not `space-y-*`; `size-*` for square; forms use `Field` +
-  `FieldGroup`; Base UI uses the **`render` prop** for link-buttons (NOT Radix `asChild`),
-  e.g. `<Button render={<Link href="..." />}>`; icons in buttons use `data-icon`, no size class.
-- **Base UI, not Radix** — check component APIs in `components/ui/*` before assuming props.
-  (Avatar / DropdownMenu / Sheet are Base UI — trigger composition uses the `render` prop.)
-- `lucide-react@1.18.0` is missing some icons (e.g. `Instagram`) — verify an icon exists
-  before importing (`node -e "console.log('X' in require('lucide-react'))"`).
-- `ctx7` CLI / find-docs skill: use for any library API question (Better Auth, Next.js,
-  Drizzle, Tailwind) — versions move fast.
-- **`.env` decides the DB and is never deployed.** Locally it points at Neon by default; flip the
-  commented lines for the local Docker DB. On Vercel the vars come from the dashboard, not the repo.
-- **Production auth failures = env, not code.** A Next.js "ERROR <digits>" on `/login`, or
-  *signups that never insert despite the tables existing*, almost always means a missing/wrong
-  Vercel env var (`BETTER_AUTH_SECRET` unset → Better Auth throws; `BETTER_AUTH_URL` still
-  `localhost` → origin/cookie failure; `DATABASE_URL` missing). Set them + redeploy;
-  `getSafeSession()` keeps the page from hard-crashing meanwhile.
-- **Better Auth `403 Invalid origin`** on a deployed POST → the request origin isn't in
-  `trustedOrigins` (which defaults to just `baseURL`). Fix in `lib/auth.ts` `trustedOrigins`
-  (already covers localhost + `*.vercel.app` for this project). See §8.
-- **Google `Error 400: redirect_uri_mismatch`** → the `redirect_uri` the app sends ≠ any URI
-  registered on that OAuth client. Two causes: (a) app sending the wrong URL (localhost in prod —
-  now fixed by the `baseURL` logic in §8), or (b) the correct prod URI not yet registered in
-  Google Console (the manual step). **Diagnose by reading exactly what's sent** with the curl in §0.
-- **Checkpoint skill** installed at `.claude/skills/checkpoint/` — say "checkpoint" / `/checkpoint`
-  to lint + type-check + build, then commit everything (skips `.env`); it does **not** push.
-  (Skills load at session start, so it appears after a restart.)
+- **Modified Next.js:** `AGENTS.md` warns of breaking changes vs. training data. Read
+  `node_modules/next/dist/docs/` before unfamiliar APIs. `headers()`/`cookies()` are **async**.
+  Server Actions are `"use server"` files; the contact + settings forms use `useActionState`.
+- **shadcn rules:** semantic colour tokens (not raw `bg-purple-500`); `gap-*` not `space-y-*`;
+  `size-*` for square; forms use `Field` + `FieldGroup`; Base UI uses the **`render` prop** (NOT
+  Radix `asChild`), e.g. `<Button render={<Link href="..." />}>`; button icons use `data-icon`.
+- **Base UI, not Radix** — check `components/ui/*` before assuming props. `AlertDialogAction` is a
+  plain Button (doesn't auto-close); dialogs are controlled via state.
+- **`lucide-react@1.18.0`** is missing some icons (e.g. `Instagram`). Verify with
+  `node -e "console.log('X' in require('lucide-react'))"`.
+- **Hydration warnings from browser extensions:** password managers (Psono, etc.) inject attributes
+  onto `<input>`/`<form>` before React loads. `suppressHydrationWarning` is applied to the shared
+  `Input` and to the auth/contact forms to silence these benign warnings.
+- **`ctx7` CLI / find-docs skill:** use for any library API question (Better Auth, Next.js, Drizzle,
+  Tailwind, Resend) — versions move fast.
+- **`.env` decides the DB and is never deployed.** Currently local Docker; flip the commented lines
+  for Neon. On Vercel the vars come from the dashboard.
+- **Production auth failures = env, not code.** Missing/wrong Vercel env (`BETTER_AUTH_SECRET` unset
+  → throws; `DATABASE_URL` missing; stale `BETTER_AUTH_URL`) is the usual cause; `getSafeSession()`
+  keeps pages from hard-crashing meanwhile.
+- **Google errors:** `redirect_uri_mismatch` = sent `redirect_uri` not registered on that client
+  (diagnose with the §0 curl); `account_not_linked` = handled by account linking (§8). Keep the
+  right OAuth client per environment (local `1rg`, prod `om1`).
+- **Admin schema needs both DBs.** Any new admin/schema column must be applied to **both** the local
+  Docker DB and Neon, or the side that's missing it will 500 on session reads.
+- **Checkpoint skill** (`.claude/skills/checkpoint/`): say "checkpoint" / `/checkpoint` to lint +
+  type-check + build, then commit everything (skips `.env`); it does **not** push.
 
 ---
 
 ## 12. Design reference assets (`.design/.specs/`)
 
-- `Pink and Cream Girly Book Review Planner.jpg` — the **colour scheme** source (purple + sage green) and the review-card layout inspiration.
-- `WhatsApp Image 2026-06-14 at 12.54.56.jpeg` — the **logo** source (copied to `public/logo.jpg`).
-- `www.tiffanystales.com_.2025-11-03T19_57_31.206Z.md` — scraped **real site content** (nav, welcome copy, services, FAQs, testimonial, contact, location). Use this as the canonical copy source.
+- `Pink and Cream Girly Book Review Planner.jpg` — **colour scheme** source + review-card layout.
+- `WhatsApp Image 2026-06-14 at 12.54.56.jpeg` — **logo** source (copied to `public/logo.jpg`).
+- `www.tiffanystales.com_.2025-11-03T19_57_31.206Z.md` — scraped **real site content** (nav, copy,
+  FAQs, testimonial, contact, location). Canonical copy source.
 - `better_auth.md` — Better Auth Google provider reference.
+- `ADMIN_PLAN.md` — the admin-feature implementation plan.
 
 ---
 
 ## 13. Suggested next steps
 
-Done recently: mobile hamburger nav, logged-in avatar menu, `db:*` scripts, `getSafeSession()`
-hardening, Drizzle migration files, switched the active DB to **Neon**, **Google OAuth wired up**,
-and the **production auth fixes** (`trustedOrigins` + Vercel-aware `baseURL`) deployed to Vercel.
+Done recently: **multi-page restructure** (route tabs), **dashboard + profile pages**, **required
+email verification** (Resend), **Google account linking**, the **admin area** (users +
+runtime-editable email settings), **contact form wired to send**, local DB switched to **Docker**,
+**Neon migrated** to the admin schema, and all of it **deployed to Vercel** (`503b85a`).
 
-- [ ] **🔴 Register the prod redirect URI in Google Console** — add
-      `https://tiffany-s-tales.vercel.app/api/auth/callback/google` to OAuth client
-      `…om1jpc03…`, and ensure test users / consent screen are set (§8). **This is the only thing
-      left for production Google sign-in** (see §0).
-- [ ] **Verify a Resend domain** so member welcome emails deliver (only the owner gets them in test
-      mode), then set `RESEND_FROM` locally + in Vercel; also add `RESEND_API_KEY` to Vercel (§8).
-- [ ] **Tidy `.env`**: remove the duplicate `GOOGLE_*` keys so only one active pair remains (§9).
-- [ ] (Optional) Set `BETTER_AUTH_URL=https://tiffany-s-tales.vercel.app` in the Vercel dashboard
-      so the env matches the code (the code already compensates for a stale localhost value).
-- [ ] **Rotate the Neon DB password** (it was shared in plain text).
-- [ ] Wire the **contact form** to a backend (server action → DB table or email).
-- [ ] **Email verification** + password reset (Better Auth `emailVerification` / `sendResetPassword`).
-- [ ] Real **billing** for the £10/month membership (the original scaffold hinted at Polar).
+- [ ] **Verify a Resend domain** so member welcome + verification emails deliver to non-owner
+      addresses, then set `RESEND_FROM` (or the admin "From address") + add `RESEND_API_KEY` to Vercel (§8b).
+- [ ] **Rotate the Neon DB password** (shared in plain text).
+- [ ] (Optional) Set `BETTER_AUTH_URL=https://tiffany-s-tales.vercel.app` in Vercel so env matches code.
+- [ ] **Password reset** (Better Auth `sendResetPassword`).
+- [ ] Real **billing** for the £10/month membership (scaffold hinted at Polar).
 - [ ] Capture extra sign-up fields (e.g. **preferred pack**) via Better Auth `user.additionalFields`.
 - [ ] Replace placeholder Unsplash photos + clip-art logo with **real brand assets** (transparent-PNG logo).
+- [ ] Persist **contact-form submissions** to a table (currently emailed only).
+- [ ] Remove the legacy unused `components/auth/auth-nav.tsx`.
 - [ ] Resolve `npm audit` advisories from `drizzle-kit` build-time deps (dev-only).
 
 ---
 
 ## 14. Git
 
-- Branch: `main`, tracks `origin/main` (`github.com/xxxarbel/tiffany-s_tales`). Vercel
-  auto-deploys every push to `main`.
-- Recent history (newest last): … → session-read hardening (`getSafeSession`) → Drizzle auth
-  migration + Neon production setup (`d0d9940`) → DESIGN.md refresh + checkpoint skill (`2f3177e`)
-  → **trust Vercel origins** (`8cfed12`) → **force production base URL on Vercel** (`ad5cb21`)
-  → **Resend registration emails** (`624460a`).
-- **State now:** `HEAD` = `624460a` on `main`; working tree clean. **`origin/main` is at `ad5cb21`,
-  so `624460a` (Resend emails + docs) is committed locally but UNPUSHED** — production therefore
-  does *not* yet have the email feature. Run `git push origin main` to deploy it (and add
-  `RESEND_API_KEY` to Vercel first, or prod sign-ups silently skip the emails).
-- ⚠️ `.env` is gitignored (and holds live secrets) — keep it that way. `checkpoint` commits but
-  does **not** push.
+- Branch: `main`, tracks `origin/main` (`github.com/xxxarbel/tiffany-s_tales`). Vercel auto-deploys
+  every push to `main`.
+- Recent history (newest last): … → Resend registration emails (`624460a`) → **member dashboard +
+  profile pages** (`2285385`) → **admin area + multi-page split + email verification** (`503b85a`).
+- **State now:** `HEAD` = `503b85a` on `main`, **pushed and deployed**. Working tree clean (only the
+  gitignored `.env`, which points at the local Docker DB, differs).
+- ⚠️ `.env` is gitignored and holds live secrets — keep it that way. `checkpoint` commits but does **not** push.
+```

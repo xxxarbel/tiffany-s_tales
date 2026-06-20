@@ -5,6 +5,7 @@ import { requireAdmin } from "@/lib/admin";
 import { db } from "@/lib/db";
 import { account } from "@/lib/schema";
 import { getSettings } from "@/lib/settings";
+import { getAnalyticsSummary } from "@/lib/analytics";
 import { SiteHeader } from "@/components/site-header";
 import { AdminPanel } from "@/components/admin/admin-panel";
 
@@ -37,6 +38,11 @@ export default async function AdminPage() {
 
   const settings = await getSettings();
 
+  // First-party analytics, one summary per range the dashboard can toggle.
+  const analytics = await Promise.all(
+    [7, 30, 90].map((days) => getAnalyticsSummary(days))
+  );
+
   return (
     <div className="min-h-svh bg-muted/40">
       <SiteHeader />
@@ -54,6 +60,7 @@ export default async function AdminPage() {
           providersByUser={providersByUser}
           currentUserId={session.user.id}
           settings={settings}
+          analytics={analytics}
         />
       </main>
     </div>

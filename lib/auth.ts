@@ -6,7 +6,11 @@ import { nextCookies } from "better-auth/next-js";
 
 import { db } from "@/lib/db";
 import { schema } from "@/lib/schema";
-import { sendRegistrationEmails, sendVerificationEmail } from "@/lib/email";
+import {
+  sendRegistrationEmails,
+  sendVerificationEmail,
+  sendPasswordResetEmail,
+} from "@/lib/email";
 
 // The owner account. Signing up / signing in with this email grants the admin
 // role. Configurable so the admin can be moved without code changes.
@@ -58,6 +62,14 @@ export const auth = betterAuth({
     // create a session, and sign-in is blocked (403) until verification. Google
     // sign-ins are exempt — Google already verifies the email.
     requireEmailVerification: true,
+    // Forgot-password flow. requestPasswordReset issues a one-time token and
+    // calls this with the reset `url` (Better Auth's callback that redirects to
+    // /reset-password?token=… on our site). Delivered via Resend like the other
+    // transactional mail. Never throws, so a mail failure can't break the flow.
+    resetPasswordTokenExpiresIn: 60 * 60, // reset link valid for 1 hour
+    sendResetPassword: async ({ user, url }) => {
+      await sendPasswordResetEmail({ name: user.name, email: user.email, url });
+    },
   },
   // On email/password sign-up — and on any sign-in attempt while still
   // unverified — Better Auth issues a one-time token and calls

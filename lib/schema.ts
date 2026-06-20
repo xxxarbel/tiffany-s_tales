@@ -1,4 +1,4 @@
-import { boolean, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { boolean, index, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 
 // Better Auth core tables (Postgres). Column names are snake_case in the DB;
 // the property names match Better Auth's model fields.
@@ -79,4 +79,32 @@ export const appSettings = pgTable("app_settings", {
     .notNull(),
 });
 
-export const schema = { user, session, account, verification, appSettings };
+// First-party web-analytics events. One row per public pageview, written by the
+// `/api/track` route from a sendBeacon call in `<PageviewTracker />`. We store
+// no IP or other PII — only an opaque random visitor id (cookie `tt_vid`) so we
+// can count unique visitors. Vercel Web Analytics runs in parallel and feeds
+// Vercel's own dashboard; this table powers the in-app admin Analytics tab.
+export const pageview = pgTable(
+  "pageview",
+  {
+    id: text("id").primaryKey(),
+    path: text("path").notNull(),
+    visitorId: text("visitor_id"),
+    referrer: text("referrer"),
+    country: text("country"),
+    device: text("device"),
+    createdAt: timestamp("created_at")
+      .$defaultFn(() => new Date())
+      .notNull(),
+  },
+  (table) => [index("pageview_created_at_idx").on(table.createdAt)]
+);
+
+export const schema = {
+  user,
+  session,
+  account,
+  verification,
+  appSettings,
+  pageview,
+};

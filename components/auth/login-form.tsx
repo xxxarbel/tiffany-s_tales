@@ -13,6 +13,9 @@ import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
 export function LoginForm() {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
+  // "login" shows the credentials form; "forgot" swaps to the reset-request
+  // form (email only). Keeps both flows on the Log in tab without a dialog.
+  const [mode, setMode] = useState<"login" | "forgot">("login")
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -45,6 +48,71 @@ export function LoginForm() {
     )
   }
 
+  async function onForgotSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    const data = new FormData(e.currentTarget)
+    const email = String(data.get("email") ?? "").trim()
+    if (!email) return
+
+    setLoading(true)
+    await authClient.requestPasswordReset(
+      { email, redirectTo: `${window.location.origin}/reset-password` },
+      {
+        onSuccess: () => {
+          // Deliberately generic so we don't reveal whether an account exists.
+          toast.success(
+            "If that email is registered, we've sent a reset link. Check your inbox 🐾"
+          )
+          setMode("login")
+          setLoading(false)
+        },
+        onError: (ctx) => {
+          toast.error(
+            ctx.error.message ?? "Couldn't send the reset link. Please try again."
+          )
+          setLoading(false)
+        },
+      }
+    )
+  }
+
+  if (mode === "forgot") {
+    return (
+      <form onSubmit={onForgotSubmit} suppressHydrationWarning>
+        <FieldGroup>
+          <p className="text-sm text-muted-foreground">
+            Enter your email and we&apos;ll send you a link to reset your
+            password.
+          </p>
+          <Field>
+            <FieldLabel htmlFor="forgot-email">Email</FieldLabel>
+            <Input
+              id="forgot-email"
+              name="email"
+              type="email"
+              placeholder="you@example.com"
+              autoComplete="email"
+              required
+            />
+          </Field>
+          <Button type="submit" className="h-10 w-full" disabled={loading}>
+            {loading ? <Spinner /> : null}
+            Send reset link
+          </Button>
+          <Button
+            type="button"
+            variant="link"
+            className="h-auto w-full"
+            disabled={loading}
+            onClick={() => setMode("login")}
+          >
+            Back to log in
+          </Button>
+        </FieldGroup>
+      </form>
+    )
+  }
+
   return (
     <form onSubmit={onSubmit} suppressHydrationWarning>
       <FieldGroup>
@@ -60,7 +128,18 @@ export function LoginForm() {
           />
         </Field>
         <Field>
-          <FieldLabel htmlFor="login-password">Password</FieldLabel>
+          <div className="flex items-center justify-between">
+            <FieldLabel htmlFor="login-password">Password</FieldLabel>
+            <Button
+              type="button"
+              variant="link"
+              size="sm"
+              className="h-auto px-0 text-xs font-normal"
+              onClick={() => setMode("forgot")}
+            >
+              Forgot password?
+            </Button>
+          </div>
           <Input
             id="login-password"
             name="password"

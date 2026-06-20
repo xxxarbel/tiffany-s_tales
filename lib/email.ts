@@ -102,6 +102,45 @@ export async function sendVerificationEmail({
   }
 }
 
+type PasswordResetEmail = { name?: string | null; email: string; url: string };
+
+/**
+ * Sends the "reset your password" message. Better Auth generates the one-time
+ * reset `url`; clicking it validates the token and lands the member on
+ * /reset-password?token=… where they choose a new password.
+ *
+ * Never throws — a failed send is logged but must not break the reset flow.
+ */
+export async function sendPasswordResetEmail({
+  name,
+  email,
+  url,
+}: PasswordResetEmail): Promise<void> {
+  if (!resend) {
+    console.warn("[email] RESEND_API_KEY not set — skipping password reset email");
+    return;
+  }
+
+  const { emailFrom } = await getSettings();
+  const displayName = name?.trim() || "there";
+
+  try {
+    const { data, error } = await resend.emails.send({
+      from: emailFrom,
+      to: [email],
+      subject: "Reset your password · Tiffany's Tales 🐾",
+      html: passwordResetHtml(displayName, url),
+    });
+    if (error) {
+      console.error("[email] password reset email error:", error);
+    } else {
+      console.log("[email] password reset email sent:", data?.id);
+    }
+  } catch (err) {
+    console.error("[email] password reset email failed:", err);
+  }
+}
+
 type ContactMessage = {
   name: string;
   email: string;
@@ -180,6 +219,31 @@ function verificationHtml(name: string, url: string): string {
     </p>
     <p style="margin:0;color:#6c5a6a;font-size:13px;">
       If you didn't create this account, you can safely ignore this email.
+    </p>
+  `);
+}
+
+function passwordResetHtml(name: string, url: string): string {
+  return shell(`
+    <h1 style="margin:0 0 12px;font-size:22px;color:#45284a;">Reset your password, ${escapeHtml(name)} 🐾</h1>
+    <p style="margin:0 0 20px;color:#3a2340;line-height:1.6;">
+      We got a request to reset the password for your Tiffany's Tales account.
+      Tap the button below to choose a new one. This link is valid for 1 hour.
+    </p>
+    <p style="margin:0 0 24px;">
+      <a href="${escapeHtml(url)}" style="display:inline-block;background:#7a4a7c;color:#f8f3f6;text-decoration:none;font-weight:600;padding:12px 24px;border-radius:8px;">
+        Reset my password
+      </a>
+    </p>
+    <p style="margin:0 0 8px;color:#6c5a6a;font-size:13px;">
+      Or paste this link into your browser:
+    </p>
+    <p style="margin:0 0 16px;word-break:break-all;font-size:13px;">
+      <a href="${escapeHtml(url)}" style="color:#7a4a7c;">${escapeHtml(url)}</a>
+    </p>
+    <p style="margin:0;color:#6c5a6a;font-size:13px;">
+      If you didn't request this, you can safely ignore this email — your
+      password won't change.
     </p>
   `);
 }
