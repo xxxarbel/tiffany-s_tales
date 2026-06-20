@@ -2,7 +2,7 @@
 
 > Single source of truth for continuing work after a context reset. Covers the
 > brand, design system, page structure, tech stack, auth/DB setup, and how to run.
-> Last updated: 2026-06-14.
+> Last updated: 2026-06-20.
 
 ---
 
@@ -28,9 +28,9 @@ The brand voice is warm, friendly, community-first ("Join my pack today!" — th
 | UI components | **shadcn/ui** | style `base-nova`, base library = **Base UI** (`@base-ui/react`), NOT Radix. icon library = **lucide**. Config in `components.json`. |
 | Icons | `lucide-react` (^1.18.0) | ⚠️ This version does NOT export `Instagram` — an inline SVG is used in the footer. |
 | Toasts | `sonner` | `<Toaster />` mounted in `app/layout.tsx`. |
-| Auth | **Better Auth** (^1.6.18) | email + password, sessions. |
-| ORM | **Drizzle ORM** (^0.45.2) + `drizzle-kit` | schema-push workflow (no migration files yet). |
-| Database | **PostgreSQL 17** via Docker | `docker-compose.yml`, port 5432. |
+| Auth | **Better Auth** (^1.6.18) | email + password **and Google OAuth** (now live — see §8), sessions. |
+| ORM | **Drizzle ORM** (^0.45.2) + `drizzle-kit` | both workflows available: `push` (dev) and generated **migration files** (`drizzle/`). |
+| Database | **Neon serverless Postgres** (active) / **PostgreSQL 17 via Docker** (offline dev) | `.env` `DATABASE_URL` points at Neon; the local Docker DB (`docker-compose.yml`, port 5432) is commented out but still available — see §9. |
 | Fonts | `next/font/google` | Geist (sans) + Playfair Display (display/headings). |
 
 Package manager: **npm**. Path alias: `@/*` → project root (e.g. `@/components/...`, `@/lib/...`).
@@ -131,7 +131,7 @@ app/
   page.tsx                    # the marketing landing page
   login/page.tsx              # /login — Tabs: Subscribe | Log in (redirects if already authed)
   dashboard/page.tsx          # /dashboard — protected; shows captured user details
-  api/auth/[...all]/route.ts  # Better Auth handler (toNextJsHandler)
+  api/auth/[...all]/route.ts  # Better Auth handler (toNextJsHandler) — serves /api/auth/*
 components/
   site-header.tsx             # sticky header: logo + desktop nav + auth + mobile Sheet menu (client)
   contact-form.tsx            # marketing contact form (client)
@@ -145,18 +145,23 @@ components/
   ui/                         # shadcn components (button, card, accordion, tabs, field, sheet,
                               #   avatar, dropdown-menu, skeleton, spinner, …)
 lib/
-  auth.ts                     # betterAuth() config + getSafeSession() (server)
+  auth.ts                     # betterAuth() config + isGoogleEnabled + getSafeSession() (server)
   auth-client.ts              # createAuthClient (browser)
-  db.ts                       # drizzle + pg Pool
+  db.ts                       # drizzle + pg Pool (connectionString = DATABASE_URL)
   schema.ts                   # Better Auth tables (user/session/account/verification)
   utils.ts                    # cn()
+drizzle/
+  0000_better_auth_init.sql   # generated migration for the auth tables
+  meta/                       # drizzle-kit journal + snapshot
 public/
   logo.jpg                    # brand logo (do not replace with a photo)
   images/                     # section photos (placeholders)
-docker-compose.yml            # Postgres 17
+docker-compose.yml            # Postgres 17 (local/offline dev only — Neon is the active DB)
 drizzle.config.ts             # drizzle-kit config
 components.json               # shadcn config
-.env / .env.example           # secrets (.env is gitignored)
+.env / .env.example           # secrets (.env is gitignored — never shipped to Vercel; see §9)
+.claude/skills/checkpoint/    # installed "checkpoint" skill (lint+type-check+build, then commit)
+.agents/.skills/              # source skills (checkpoint, shadcn, playwright-cli, security-scanner, …)
 ```
 
 ---
@@ -164,7 +169,8 @@ components.json               # shadcn config
 ## 8. Auth & database
 
 - **Stack:** Better Auth (email+password, `autoSignIn: true`, `minPasswordLength: 8`,
-  `nextCookies()` plugin) + **Google OAuth** → Drizzle adapter (`provider: "pg"`) → Postgres.
+  `nextCookies()` plugin) **+ Google OAuth** → Drizzle adapter (`provider: "pg"`) → Postgres
+  (**Neon** in `.env`; local Docker available offline).
 - **Tables** (`lib/schema.ts`, snake_case columns): `user`, `session`, `account`
   (stores hashed password under `provider_id = 'credential'`, and Google identities under
   `provider_id = 'google'` with access/refresh/id tokens + scope), `verification`.
@@ -178,25 +184,34 @@ components.json               # shadcn config
 - **Logged-in UI:** the header shows an **avatar** (`components/auth/user-menu.tsx`) — Google
   photo (`user.image`) or initials fallback — opening a dropdown with name/email, "My account"
   (`/dashboard`), and "Sign out". The mobile sheet shows a profile row + sign-out.
-- **Health check:** `GET /api/auth/ok` → `{ ok: true }`.
-- **Verified working end-to-end** (email sign-up persists row, login issues session, wrong
-  password → 401; Google social endpoint returns a valid auth URL with the correct callback).
+- **Verified working** (this session): email sign-up persists a row, login issues a session,
+  wrong password → 401; **Google social endpoint returns a valid Google auth URL** with the
+  correct `client_id`, `redirect_uri` (`/api/auth/callback/google`), `scope=email profile openid`,
+  PKCE and `prompt=select_account`.
 
-### Google OAuth (`.design/.specs/better_auth.md`)
+### Google OAuth (`.design/.specs/better_auth.md`) — **enabled**
 - Config lives in `lib/auth.ts` under `socialProviders.google` (`prompt: "select_account"`),
   **guarded by `isGoogleEnabled`** — it activates only when both `GOOGLE_CLIENT_ID` and
   `GOOGLE_CLIENT_SECRET` are set, so the app still builds/runs on email-password until then.
+  Both are now set in `.env`, so the button is live locally.
 - UI: `components/auth/google-button.tsx` ("Continue with Google"), shown above the tabs on
-  `/login` only when `isGoogleEnabled` is true.
-- **To enable:** Google Cloud Console → APIs & Services → Credentials → Create credentials →
-  OAuth client ID → **Web application**. Authorized redirect URI:
-  `http://localhost:3000/api/auth/callback/google` (prod: `https://<domain>/api/auth/callback/google`).
-  Paste Client ID/Secret into `.env`, restart `npm run dev`. The Google button appears automatically.
+  `/login` only when `isGoogleEnabled` is true. (Next.js dev **reloads `.env`** on change, so a
+  full restart usually isn't needed locally; production needs a redeploy.)
+- **Remaining setup to complete the round-trip** (these live in Google, not the code):
+  - **Google Cloud Console → Credentials → your OAuth client → Authorized redirect URIs** must
+    include — exactly, no trailing slash:
+    - `http://localhost:3000/api/auth/callback/google` (local)
+    - `https://<prod-domain>/api/auth/callback/google` (production)
+    Missing/mismatched → Google returns `Error 400: redirect_uri_mismatch`.
+  - **OAuth consent screen**: while in **Testing** mode, add each tester (e.g. `arbeling@gmail.com`)
+    under **Test users**, or Google blocks sign-in ("access blocked / app not verified").
 
 ### Schema changes
-After editing `lib/schema.ts` (or adding Better Auth plugins), re-push:
+After editing `lib/schema.ts` (or adding Better Auth plugins), re-sync:
 ```bash
-DATABASE_URL="postgres://tiffany:tiffany_dev_pw@localhost:5432/tiffany_tales" npx drizzle-kit push
+npm run db:push        # drizzle-kit auto-loads DATABASE_URL from .env (pushes to whatever it points at)
+npm run db:generate    # OR generate a migration file into drizzle/
+npm run db:migrate     # then apply generated migrations
 ```
 (For Better Auth plugins, you may also run `npx @better-auth/cli@latest generate` to refresh schema.)
 
@@ -205,45 +220,62 @@ DATABASE_URL="postgres://tiffany:tiffany_dev_pw@localhost:5432/tiffany_tales" np
 ## 9. Environment variables (`.env`, gitignored — see `.env.example`)
 
 ```
-DATABASE_URL=postgres://tiffany:tiffany_dev_pw@localhost:5432/tiffany_tales
-BETTER_AUTH_SECRET=<openssl rand -base64 32>
-BETTER_AUTH_URL=http://localhost:3000
-GOOGLE_CLIENT_ID=        # empty by default — fill in to enable Google sign-in
-GOOGLE_CLIENT_SECRET=    # empty by default — fill in to enable Google sign-in
-```
-⚠️ The DB password + secret in the repo are **throwaway local-dev values**. Use real
-secrets management before deploying. Never commit a real `.env`. Google creds are left
-**empty** so nothing sensitive is committed; the Google button stays hidden until they're set.
+# Local Postgres (docker-compose.yml) — commented out; uncomment to dev offline
+# DATABASE_URL=postgres://tiffany:tiffany_dev_pw@localhost:5432/tiffany_tales
 
-### Production (Neon Postgres)
-- Production uses a **Neon** serverless Postgres (not the local Docker DB). Its URL lives in
-  `.env` for reference but the **real production env vars must be set on the host** (Vercel etc.):
-  - `DATABASE_URL` → the Neon connection string (`...neon.tech/neondb?sslmode=require`)
-  - `BETTER_AUTH_URL` → the **production https domain** (NOT `localhost`) — a wrong value breaks
-    OAuth callbacks and cookies
-  - `BETTER_AUTH_SECRET` → 32+ char secret
-  - `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` (if Google is used in prod) + add the prod
-    redirect URI `https://<domain>/api/auth/callback/google` in Google Cloud Console
-- The Neon DB needs the auth tables created once: run `db:push` (or migrate) against the Neon
-  `DATABASE_URL`. A deploy will crash on `/login` with a Next.js error digest if the tables
-  are missing or the DB is unreachable.
-- 🔐 Rotate any DB password that has been shared in plain text.
+# Neon serverless Postgres — the ACTIVE database
+DATABASE_URL=postgresql://<neon-user>:<pw>@<endpoint>-pooler.<region>.aws.neon.tech/neondb?sslmode=require
+
+BETTER_AUTH_SECRET=<32+ char secret>
+BETTER_AUTH_URL=http://localhost:3000          # prod: https://<prod-domain>
+GOOGLE_CLIENT_ID=<google web client id>        # set → enables Google sign-in
+GOOGLE_CLIENT_SECRET=<google web client secret>
+```
+
+- **Which DB is live is decided here.** `.env` currently points `DATABASE_URL` at **Neon**, so
+  even `npm run dev` talks to Neon. To develop against the local Docker DB instead, **uncomment
+  the local line and comment out the Neon line**, then restart the dev server.
+- ⚠️ **Throwaway local-dev values.** The DB password + secret in the file are local-dev only —
+  use real secrets management before relying on them. **Rotate any DB password shared in plain
+  text** (the Neon password has been). Never commit a real `.env`.
+- ⚠️ **No duplicate keys.** `.env` files are last-value-wins — if `GOOGLE_CLIENT_ID` /
+  `GOOGLE_CLIENT_SECRET` appear more than once, only the **last** pair is used. Keep a single
+  active pair (use separate dev vs prod **OAuth clients** if you want, but set them per
+  environment, not stacked in one file).
+
+### Production (Neon + Vercel)
+**`.env` is gitignored and is NEVER shipped to Vercel.** Vercel only gets the variables you set
+in its dashboard, so the deployed app fails (e.g. *tables exist on Neon but signups don't insert*)
+when they're missing. Set, in **Vercel → Settings → Environment Variables (Production)**:
+- `DATABASE_URL` → the Neon connection string (`...neon.tech/neondb?sslmode=require`)
+- `BETTER_AUTH_SECRET` → 32+ char secret. **Required in production** — Better Auth *throws* if
+  it's unset, so every signup/login fails before touching the DB.
+- `BETTER_AUTH_URL` → the **production https domain** (NOT `localhost`) — a wrong value breaks
+  OAuth callbacks, cookies, and the request-origin check (signup rejected as invalid origin).
+- `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` (if Google is used in prod) + add the prod redirect
+  URI `https://<domain>/api/auth/callback/google` in Google Cloud Console.
+
+Then **redeploy** — Vercel only applies env-var changes to a *new* deployment. (Preview
+deployments have changing URLs; add them to a `trustedOrigins` array in `lib/auth.ts` if you test
+auth on previews.) The Neon DB needs the auth tables created once (`db:push`/`db:migrate` against
+the Neon `DATABASE_URL`).
 
 ---
 
 ## 10. How to run
 
 ```bash
-docker compose up -d     # start Postgres (container: tiffany_tales_db, port 5432)
+# Neon is the active DB by default, so docker is only needed for offline/local dev:
+docker compose up -d     # (optional) start local Postgres (container: tiffany_tales_db, port 5432)
 npm install              # if deps not installed
 npm run db:push          # create/sync the auth tables (first time / after schema change)
-npm run dev              # http://localhost:3000
+npm run dev              # http://localhost:3000  (uses whatever DATABASE_URL points at — Neon by default)
 ```
 **DB scripts** (drizzle-kit auto-loads `DATABASE_URL` from `.env`):
 ```bash
-npm run db:push      # sync lib/schema.ts -> Postgres (the dev workflow)
+npm run db:push      # sync lib/schema.ts -> DB (the dev workflow)
 npm run db:studio    # open Drizzle Studio (browser GUI for the tables)
-npm run db:generate  # generate SQL migration files
+npm run db:generate  # generate SQL migration files into drizzle/
 npm run db:migrate   # apply generated migration files
 ```
 Quality gates (all currently pass):
@@ -252,18 +284,20 @@ npm run lint
 npx tsc --noEmit
 npm run build
 ```
-Useful DB peek:
+Useful DB peek (local Docker DB):
 ```bash
 docker exec tiffany_tales_db psql -U tiffany -d tiffany_tales -c '\dt'
 docker exec tiffany_tales_db psql -U tiffany -d tiffany_tales -c 'SELECT name,email,created_at FROM "user";'
 ```
+For Neon, query via any pg client using the Neon `DATABASE_URL`.
 
 ### Deploying to production
-1. Set the production env vars on the host (see §9 — Neon `DATABASE_URL`, `BETTER_AUTH_URL`
-   = prod domain, `BETTER_AUTH_SECRET`, Google creds if used).
+1. Set the production env vars in the **Vercel dashboard** (see §9 — Neon `DATABASE_URL`,
+   `BETTER_AUTH_URL` = prod domain, `BETTER_AUTH_SECRET`, Google creds if used). They are NOT
+   taken from the committed repo because `.env` is gitignored.
 2. Create the tables in the Neon DB once: `npm run db:push` with `DATABASE_URL` pointing at Neon
    (PowerShell: `$env:DATABASE_URL="<neon-url>"; npm run db:push`).
-3. Deploy. `/login` and `/dashboard` read the session server-side via `getSafeSession()`
+3. Deploy / redeploy. `/login` and `/dashboard` read the session via `getSafeSession()`
    (`lib/auth.ts`), which returns `null` instead of throwing if the DB is unreachable — so the
    login form still renders rather than showing a Next.js error digest.
 
@@ -279,15 +313,21 @@ docker exec tiffany_tales_db psql -U tiffany -d tiffany_tales -c 'SELECT name,em
   `FieldGroup`; Base UI uses the **`render` prop** for link-buttons (NOT Radix `asChild`),
   e.g. `<Button render={<Link href="..." />}>`; icons in buttons use `data-icon`, no size class.
 - **Base UI, not Radix** — check component APIs in `components/ui/*` before assuming props.
+  (Avatar / DropdownMenu / Sheet are Base UI — trigger composition uses the `render` prop.)
 - `lucide-react@1.18.0` is missing some icons (e.g. `Instagram`) — verify an icon exists
   before importing (`node -e "console.log('X' in require('lucide-react'))"`).
 - `ctx7` CLI / find-docs skill: use for any library API question (Better Auth, Next.js,
   Drizzle, Tailwind) — versions move fast.
-- **Production crash = DB/env, not code.** A Next.js "ERROR <digits>" on `/login` in prod is an
-  error digest — almost always an unreachable DB (`DATABASE_URL` still `localhost`) or missing
-  tables in Neon. Fix the env + run `db:push` against Neon; `getSafeSession()` keeps the page
-  from hard-crashing meanwhile.
-- **Avatar / DropdownMenu / Sheet are Base UI** — trigger composition uses the `render` prop.
+- **`.env` decides the DB and is never deployed.** Locally it points at Neon by default; flip the
+  commented lines for the local Docker DB. On Vercel the vars come from the dashboard, not the repo.
+- **Production auth failures = env, not code.** A Next.js "ERROR <digits>" on `/login`, or
+  *signups that never insert despite the tables existing*, almost always means a missing/wrong
+  Vercel env var (`BETTER_AUTH_SECRET` unset → Better Auth throws; `BETTER_AUTH_URL` still
+  `localhost` → origin/cookie failure; `DATABASE_URL` missing). Set them + redeploy;
+  `getSafeSession()` keeps the page from hard-crashing meanwhile.
+- **Checkpoint skill** installed at `.claude/skills/checkpoint/` — say "checkpoint" / `/checkpoint`
+  to lint + type-check + build, then commit everything (skips `.env`); it does **not** push.
+  (Skills load at session start, so it appears after a restart.)
 
 ---
 
@@ -296,16 +336,21 @@ docker exec tiffany_tales_db psql -U tiffany -d tiffany_tales -c 'SELECT name,em
 - `Pink and Cream Girly Book Review Planner.jpg` — the **colour scheme** source (purple + sage green) and the review-card layout inspiration.
 - `WhatsApp Image 2026-06-14 at 12.54.56.jpeg` — the **logo** source (copied to `public/logo.jpg`).
 - `www.tiffanystales.com_.2025-11-03T19_57_31.206Z.md` — scraped **real site content** (nav, welcome copy, services, FAQs, testimonial, contact, location). Use this as the canonical copy source.
+- `better_auth.md` — Better Auth Google provider reference.
 
 ---
 
 ## 13. Suggested next steps
 
-Done recently: mobile hamburger nav, logged-in avatar menu, Google OAuth, `db:*` scripts,
-`getSafeSession()` hardening.
+Done recently: mobile hamburger nav, logged-in avatar menu, `db:*` scripts, `getSafeSession()`
+hardening, Drizzle migration files, switched the active DB to **Neon**, and **Google OAuth wired
+up + verified locally**.
 
-- [ ] **Create the auth tables in the Neon production DB** (`db:push` against the Neon URL) and
-      set prod env vars — required for production login (see §9–10).
+- [ ] **Finish Google in Google Cloud Console**: register the local + prod redirect URIs and add
+      test users (or publish the consent screen) — see §8.
+- [ ] **Set the Vercel production env vars + redeploy** (Neon `DATABASE_URL`, `BETTER_AUTH_SECRET`,
+      `BETTER_AUTH_URL` = prod domain, Google creds) — required for the deployed login to work.
+- [ ] **Tidy `.env`**: remove the duplicate `GOOGLE_*` keys so only one active pair remains (§9).
 - [ ] **Rotate the Neon DB password** (it was shared in plain text).
 - [ ] Wire the **contact form** to a backend (server action → DB table or email).
 - [ ] **Email verification** + password reset (Better Auth `emailVerification` / `sendResetPassword`).
@@ -313,15 +358,16 @@ Done recently: mobile hamburger nav, logged-in avatar menu, Google OAuth, `db:*`
 - [ ] Capture extra sign-up fields (e.g. **preferred pack**) via Better Auth `user.additionalFields`.
 - [ ] Replace placeholder Unsplash photos + clip-art logo with **real brand assets** (transparent-PNG logo).
 - [ ] Resolve `npm audit` advisories from `drizzle-kit` build-time deps (dev-only).
-- [ ] Generate proper Drizzle **migration files** (currently using `push`).
 
 ---
 
 ## 14. Git
 
 - Branch: `main`, tracks `origin/main` (`github.com/xxxarbel/tiffany-s_tales`).
-- Pushed so far: initial build → shadcn + purple/green theme + photos + real content →
+- Recent history: initial build → shadcn + purple/green theme + photos + real content →
   auth/Postgres + benefit photos + design handoff → Google login + avatar menu + mobile nav
-  + polish → session-read hardening (`getSafeSession`).
-- **Uncommitted at last update:** this DESIGN.md update. Run the `checkpoint` skill
-  (`.agents/.skills/checkpoint/SKILL.md`) to lint/type-check/build, commit, and push.
+  + polish → session-read hardening (`getSafeSession`) → **Drizzle auth migration + Neon
+  production setup** (`d0d9940`).
+- **Uncommitted/untracked at last update:** this DESIGN.md rewrite, plus the new
+  `.claude/` (installed checkpoint skill). Run the `checkpoint` skill to lint/type-check/build
+  and commit. ⚠️ `.env` is gitignored (and holds live secrets) — keep it that way.
