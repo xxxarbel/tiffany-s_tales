@@ -30,7 +30,15 @@ export function LoginForm() {
           router.refresh()
         },
         onError: (ctx) => {
-          toast.error(ctx.error.message ?? "Invalid email or password.")
+          // 403 = email not verified yet. Better Auth re-sends the verification
+          // link on this attempt, so point the member back to their inbox.
+          if (ctx.error.status === 403) {
+            toast.error(
+              "Please verify your email first — we've sent you a fresh link."
+            )
+          } else {
+            toast.error(ctx.error.message ?? "Invalid email or password.")
+          }
           setLoading(false)
         },
       }
@@ -38,7 +46,7 @@ export function LoginForm() {
   }
 
   return (
-    <form onSubmit={onSubmit}>
+    <form onSubmit={onSubmit} suppressHydrationWarning>
       <FieldGroup>
         <Field>
           <FieldLabel htmlFor="login-email">Email</FieldLabel>

@@ -1,11 +1,19 @@
 "use client"
 
 import { useState } from "react"
-import Image from "next/image"
 import Link from "next/link"
-import { LayoutDashboard, Menu, ShoppingBag } from "lucide-react"
+import { usePathname } from "next/navigation"
+import {
+  LayoutDashboard,
+  Menu,
+  ShieldCheck,
+  ShoppingBag,
+  UserRound,
+} from "lucide-react"
 
+import { cn } from "@/lib/utils"
 import { authClient } from "@/lib/auth-client"
+import { Logo } from "@/components/logo"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
@@ -20,44 +28,79 @@ import { UserAvatar, UserMenu } from "@/components/auth/user-menu"
 import { SignOutButton } from "@/components/auth/sign-out-button"
 
 const navLinks = [
-  { label: "Home", href: "#home" },
-  { label: "About", href: "#about" },
-  { label: "Book Club Benefits", href: "#benefits" },
-  { label: "Book Reviews", href: "#reviews" },
-  { label: "Contact", href: "#contact" },
+  { label: "Home", href: "/" },
+  { label: "About", href: "/about" },
+  { label: "Book Club Benefits", href: "/benefits" },
+  { label: "Book Reviews", href: "/reviews" },
+  { label: "Contact", href: "/contact" },
 ]
+
+const accountLinks = [
+  { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+  { label: "Profile", href: "/profile", icon: UserRound },
+]
+
+function isActive(pathname: string, href: string) {
+  return href === "/" ? pathname === "/" : pathname.startsWith(href)
+}
 
 export function SiteHeader() {
   const { data: session, isPending } = authClient.useSession()
+  const pathname = usePathname()
   const [open, setOpen] = useState(false)
+
+  // Admin link is shown only to admins; the route itself is server-guarded.
+  const isAdmin = (session?.user as { role?: string | null })?.role === "admin"
+  const sessionLinks = isAdmin
+    ? [...accountLinks, { label: "Admin", href: "/admin", icon: ShieldCheck }]
+    : accountLinks
 
   return (
     <header className="sticky top-0 z-30 border-b bg-background/80 backdrop-blur">
-      <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-3">
-        <a href="#home" className="flex items-center gap-2.5">
-          <Image
-            src="/logo.jpg"
-            alt="Tiffany's Tales logo"
-            width={40}
-            height={40}
-            priority
-            className="rounded-full ring-2 ring-primary/25"
-          />
+      <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-3">
+        <Link href="/" className="flex shrink-0 items-center gap-2.5">
+          <Logo size={40} priority className="ring-2 ring-primary/25" />
           <span className="font-display text-xl font-bold tracking-tight sm:text-2xl">
             Tiffany&apos;s Tales
           </span>
-        </a>
+        </Link>
 
-        <nav className="hidden items-center gap-6 text-sm font-medium text-muted-foreground lg:flex">
+        {/* Desktop tabs */}
+        <nav className="hidden items-center gap-5 text-sm font-medium lg:flex">
           {navLinks.map((link) => (
-            <a
+            <Link
               key={link.href}
               href={link.href}
-              className="transition-colors hover:text-foreground"
+              className={cn(
+                "relative py-1 transition-colors after:absolute after:inset-x-0 after:-bottom-0.5 after:h-0.5 after:rounded-full after:bg-primary after:transition-transform hover:text-foreground",
+                isActive(pathname, link.href)
+                  ? "text-foreground after:scale-x-100"
+                  : "text-muted-foreground after:scale-x-0"
+              )}
             >
               {link.label}
-            </a>
+            </Link>
           ))}
+          {session ? (
+            <>
+              <span aria-hidden className="h-4 w-px bg-border" />
+              {sessionLinks.map((link) => (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className={cn(
+                    "relative flex items-center gap-1.5 py-1 transition-colors after:absolute after:inset-x-0 after:-bottom-0.5 after:h-0.5 after:rounded-full after:bg-primary after:transition-transform hover:text-foreground",
+                    isActive(pathname, link.href)
+                      ? "text-foreground after:scale-x-100"
+                      : "text-muted-foreground after:scale-x-0"
+                  )}
+                >
+                  <link.icon className="size-4" />
+                  {link.label}
+                </Link>
+              ))}
+            </>
+          ) : null}
         </nav>
 
         <div className="flex items-center gap-2">
@@ -111,12 +154,32 @@ export function SiteHeader() {
                 {navLinks.map((link) => (
                   <SheetClose
                     key={link.href}
-                    render={<a href={link.href} />}
-                    className="rounded-md px-3 py-2.5 text-sm font-medium transition-colors hover:bg-muted"
+                    render={<Link href={link.href} />}
+                    className={cn(
+                      "rounded-md px-3 py-2.5 text-sm font-medium transition-colors hover:bg-muted",
+                      isActive(pathname, link.href) &&
+                        "bg-muted text-foreground"
+                    )}
                   >
                     {link.label}
                   </SheetClose>
                 ))}
+                {session
+                  ? sessionLinks.map((link) => (
+                      <SheetClose
+                        key={link.href}
+                        render={<Link href={link.href} />}
+                        className={cn(
+                          "flex items-center gap-2 rounded-md px-3 py-2.5 text-sm font-medium transition-colors hover:bg-muted",
+                          isActive(pathname, link.href) &&
+                            "bg-muted text-foreground"
+                        )}
+                      >
+                        <link.icon className="size-4" />
+                        {link.label}
+                      </SheetClose>
+                    ))
+                  : null}
               </nav>
               <div className="mt-auto flex flex-col gap-3 border-t p-4">
                 {session ? (
@@ -132,14 +195,6 @@ export function SiteHeader() {
                         </p>
                       </div>
                     </div>
-                    <Button
-                      variant="secondary"
-                      className="h-10 w-full"
-                      render={<Link href="/dashboard" />}
-                    >
-                      <LayoutDashboard data-icon="inline-start" />
-                      My account
-                    </Button>
                     <SignOutButton className="w-full" />
                   </>
                 ) : (

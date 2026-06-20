@@ -1,11 +1,18 @@
 import { headers } from "next/headers";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { admin } from "better-auth/plugins";
 import { nextCookies } from "better-auth/next-js";
 
 import { db } from "@/lib/db";
 import { schema } from "@/lib/schema";
-import { sendRegistrationEmails } from "@/lib/email";
+import { sendRegistrationEmails, sendVerificationEmail } from "@/lib/email";
+
+// The owner account. Signing up / signing in with this email grants the admin
+// role. Configurable so the admin can be moved without code changes.
+export const ADMIN_EMAIL = (
+  process.env.ADMIN_EMAIL ?? "arbeling@gmail.com"
+).toLowerCase();
 
 // Google sign-in activates only once both credentials are provided, so the app
 // keeps building and running with email/password before Google is configured.
@@ -46,8 +53,24 @@ export const auth = betterAuth({
   }),
   emailAndPassword: {
     enabled: true,
-    autoSignIn: true,
     minPasswordLength: 8,
+    // The account is inactive until the email is verified: sign-up does NOT
+    // create a session, and sign-in is blocked (403) until verification. Google
+    // sign-ins are exempt — Google already verifies the email.
+    requireEmailVerification: true,
+  },
+  // On email/password sign-up — and on any sign-in attempt while still
+  // unverified — Better Auth issues a one-time token and calls
+  // sendVerificationEmail with the verification `url`. Clicking the link marks
+  // the address verified and (via autoSignInAfterVerification) signs the member
+  // in straight away.
+  emailVerification: {
+    sendOnSignUp: true,
+    autoSignInAfterVerification: true,
+    expiresIn: 60 * 60, // verification link valid for 1 hour
+    sendVerificationEmail: async ({ user, url }) => {
+      await sendVerificationEmail({ name: user.name, email: user.email, url });
+    },
   },
   socialProviders: googleEnabled
     ? {
@@ -58,9 +81,28 @@ export const auth = betterAuth({
         },
       }
     : undefined,
+  // Let Google sign-in attach to an existing email/password account with the
+  // same address (e.g. the owner registered with a password first, then signs
+  // in with Google). Without this, Better Auth rejects it with
+  // "account_not_linked". Safe because Google verifies the email it returns.
+  account: {
+    accountLinking: {
+      enabled: true,
+      trustedProviders: ["google"],
+    },
+  },
   databaseHooks: {
     user: {
       create: {
+        // Runs before the row is inserted. The admin plugin marks `role` as
+        // input:false, so it can't be set from the sign-up payload — but a
+        // server-side hook can. Stamp the admin role when the owner registers.
+        before: async (user) => {
+          if (user.email.toLowerCase() === ADMIN_EMAIL) {
+            return { data: { ...user, role: "admin" } };
+          }
+          return { data: user };
+        },
         // Fires after a user row is created — covers both email/password and
         // Google sign-up. Emails the owner and welcomes the new member.
         // sendRegistrationEmails never throws, so a mail failure can't break
@@ -75,8 +117,13 @@ export const auth = betterAuth({
       },
     },
   },
-  // nextCookies must be the last plugin so it can set cookies on responses.
-  plugins: [nextCookies()],
+  plugins: [
+    // The admin plugin serves /api/auth/admin/* (list/ban/setRole/remove …) and
+    // adds role/banned fields to the session user. Must come before nextCookies.
+    admin({ defaultRole: "user", adminRoles: ["admin"] }),
+    // nextCookies must be the last plugin so it can set cookies on responses.
+    nextCookies(),
+  ],
 });
 
 export const isGoogleEnabled = googleEnabled;

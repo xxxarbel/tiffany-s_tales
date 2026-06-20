@@ -17,6 +17,12 @@ export const user = pgTable("user", {
   updatedAt: timestamp("updated_at")
     .$defaultFn(() => new Date())
     .notNull(),
+  // Better Auth admin plugin fields. Nullable so existing rows are unaffected;
+  // the plugin applies `defaultRole` at runtime and treats null as default.
+  role: text("role"),
+  banned: boolean("banned"),
+  banReason: text("ban_reason"),
+  banExpires: timestamp("ban_expires"),
 });
 
 export const session = pgTable("session", {
@@ -30,6 +36,8 @@ export const session = pgTable("session", {
   userId: text("user_id")
     .notNull()
     .references(() => user.id, { onDelete: "cascade" }),
+  // Set by the admin plugin's impersonation feature.
+  impersonatedBy: text("impersonated_by"),
 });
 
 export const account = pgTable("account", {
@@ -59,4 +67,16 @@ export const verification = pgTable("verification", {
   updatedAt: timestamp("updated_at").$defaultFn(() => new Date()),
 });
 
-export const schema = { user, session, account, verification };
+// App-wide editable settings (key/value). Used for runtime-configurable email
+// addresses (contact recipient, email "from", admin-notification recipient) so
+// the owner can change them from the admin UI without a redeploy. Not a Better
+// Auth table.
+export const appSettings = pgTable("app_settings", {
+  key: text("key").primaryKey(),
+  value: text("value"),
+  updatedAt: timestamp("updated_at")
+    .$defaultFn(() => new Date())
+    .notNull(),
+});
+
+export const schema = { user, session, account, verification, appSettings };

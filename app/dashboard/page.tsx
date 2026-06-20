@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { UserAvatar } from "@/components/auth/user-menu";
-import { AccountHeader } from "@/components/auth/account-header";
+import { SiteHeader } from "@/components/site-header";
 
 export default async function DashboardPage() {
   const session = await getSafeSession();
@@ -41,7 +41,7 @@ export default async function DashboardPage() {
 
   return (
     <div className="min-h-svh bg-muted/40">
-      <AccountHeader user={user} />
+      <SiteHeader />
 
       <main className="mx-auto max-w-5xl px-6 py-10">
         {/* Welcome */}

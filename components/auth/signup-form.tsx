@@ -1,8 +1,8 @@
 "use client"
 
 import { useState } from "react"
-import { useRouter } from "next/navigation"
 import { toast } from "sonner"
+import { MailCheck } from "lucide-react"
 
 import { authClient } from "@/lib/auth-client"
 import { Button } from "@/components/ui/button"
@@ -11,8 +11,8 @@ import { Spinner } from "@/components/ui/spinner"
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
 
 export function SignupForm() {
-  const router = useRouter()
   const [loading, setLoading] = useState(false)
+  const [sentTo, setSentTo] = useState<string | null>(null)
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -26,9 +26,10 @@ export function SignupForm() {
       { name, email, password },
       {
         onSuccess: () => {
-          toast.success(`Welcome to the pack, ${name}! 🐾`)
-          router.push("/dashboard")
-          router.refresh()
+          // Email verification is required, so no session is created here — the
+          // member must click the link we just emailed before they can log in.
+          toast.success("Almost there — check your email to verify! 🐾")
+          setSentTo(email)
         },
         onError: (ctx) => {
           toast.error(ctx.error.message ?? "Something went wrong. Please try again.")
@@ -38,8 +39,27 @@ export function SignupForm() {
     )
   }
 
+  if (sentTo) {
+    return (
+      <div className="flex flex-col items-center gap-3 py-4 text-center">
+        <div className="flex size-12 items-center justify-center rounded-full bg-secondary text-secondary-foreground">
+          <MailCheck className="size-6" />
+        </div>
+        <h3 className="font-display text-lg font-semibold">Check your inbox</h3>
+        <p className="text-sm text-muted-foreground">
+          We&apos;ve sent a verification link to{" "}
+          <span className="font-medium text-foreground">{sentTo}</span>. Click it
+          to activate your account, then log in.
+        </p>
+        <p className="text-xs text-muted-foreground">
+          Can&apos;t find it? Check your spam folder.
+        </p>
+      </div>
+    )
+  }
+
   return (
-    <form onSubmit={onSubmit}>
+    <form onSubmit={onSubmit} suppressHydrationWarning>
       <FieldGroup>
         <Field>
           <FieldLabel htmlFor="signup-name">Name</FieldLabel>

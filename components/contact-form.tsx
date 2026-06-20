@@ -1,26 +1,38 @@
 "use client"
 
+import { useActionState, useEffect, useRef } from "react"
 import { toast } from "sonner"
 import { SendIcon } from "lucide-react"
 
+import { submitContact, type ContactState } from "@/app/(marketing)/contact/actions"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Spinner } from "@/components/ui/spinner"
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
 
 export function ContactForm() {
-  function onSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault()
-    const form = e.currentTarget
-    toast.success("Thanks for your message — I'll be in touch soon!", {
-      description: "Welcome to the pack. 🐾",
-    })
-    form.reset()
-  }
+  const formRef = useRef<HTMLFormElement>(null)
+  const [state, formAction, pending] = useActionState<ContactState, FormData>(
+    submitContact,
+    null
+  )
+
+  useEffect(() => {
+    if (!state) return
+    if (state.ok) {
+      toast.success("Thanks for your message — I'll be in touch soon!", {
+        description: "Welcome to the pack. 🐾",
+      })
+      formRef.current?.reset()
+    } else if (state.error) {
+      toast.error(state.error)
+    }
+  }, [state])
 
   return (
-    <form onSubmit={onSubmit}>
+    <form ref={formRef} action={formAction} suppressHydrationWarning>
       <FieldGroup>
         <Field>
           <FieldLabel htmlFor="name">Name</FieldLabel>
@@ -52,8 +64,8 @@ export function ContactForm() {
             Send me a copy
           </FieldLabel>
         </Field>
-        <Button type="submit" className="h-10 w-full">
-          <SendIcon data-icon="inline-start" />
+        <Button type="submit" className="h-10 w-full" disabled={pending}>
+          {pending ? <Spinner /> : <SendIcon data-icon="inline-start" />}
           Send message
         </Button>
       </FieldGroup>

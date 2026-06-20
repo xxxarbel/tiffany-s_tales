@@ -16,7 +16,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { AccountHeader } from "@/components/auth/account-header";
+import { SiteHeader } from "@/components/site-header";
 import { ProfileForm } from "@/components/auth/profile-form";
 
 const providerLabels: Record<string, string> = {
@@ -51,7 +51,7 @@ export default async function ProfilePage() {
 
   return (
     <div className="min-h-svh bg-muted/40">
-      <AccountHeader user={user} />
+      <SiteHeader />
 
       <main className="mx-auto max-w-3xl px-6 py-10">
         <div>

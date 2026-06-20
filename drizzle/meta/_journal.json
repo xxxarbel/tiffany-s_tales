@@ -8,6 +8,13 @@
       "when": 1781446529283,
       "tag": "0000_better_auth_init",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1781979678162,
+      "tag": "0001_tough_firedrake",
+      "breakpoints": true
     }
   ]
 }
