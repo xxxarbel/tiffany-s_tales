@@ -14,12 +14,17 @@ const googleEnabled = Boolean(
 
 // Resolve the base URL. On Vercel, BETTER_AUTH_URL may be unset (or wrongly left
 // as localhost), which makes Better Auth reject requests with "Invalid origin"
-// and build OAuth callbacks against localhost. Fall back to Vercel's own
-// production domain so the deployed app works without extra config.
+// and build OAuth callbacks against localhost (-> Google redirect_uri_mismatch).
+// A localhost base URL is never correct inside a Vercel deployment, so there we
+// always use the deployment's own production domain instead.
 const vercelProductionURL = process.env.VERCEL_PROJECT_PRODUCTION_URL
   ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
   : undefined;
-const baseURL = process.env.BETTER_AUTH_URL ?? vercelProductionURL;
+const configuredURL = process.env.BETTER_AUTH_URL;
+const baseURL =
+  process.env.VERCEL && (!configuredURL || configuredURL.includes("localhost"))
+    ? vercelProductionURL
+    : configuredURL ?? vercelProductionURL;
 
 // CSRF/origin whitelist. Better Auth only trusts `baseURL` by default, so the
 // production and preview Vercel origins must be added explicitly or sign-in
