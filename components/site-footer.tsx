@@ -2,25 +2,7 @@ import Link from "next/link";
 
 import { Logo } from "@/components/logo";
 import { Separator } from "@/components/ui/separator";
-
-function InstagramIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-      className={className}
-    >
-      <rect x="2" y="2" width="20" height="20" rx="5" />
-      <circle cx="12" cy="12" r="4" />
-      <circle cx="17.5" cy="6.5" r="0.5" fill="currentColor" />
-    </svg>
-  );
-}
+import { InstagramIcon } from "@/components/icons/instagram-icon";
 
 export function SiteFooter() {
   return (
@@ -87,7 +69,7 @@ export function SiteFooter() {
               United Kingdom
             </p>
             <a
-              href="https://www.instagram.com/"
+              href="https://www.instagram.com/tiffanystales/"
               target="_blank"
               rel="noopener noreferrer"
               className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-sage transition-colors hover:text-cream"

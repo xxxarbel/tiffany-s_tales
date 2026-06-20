@@ -2,21 +2,35 @@
 
 > Single source of truth for continuing work after a context reset. Covers the
 > brand, design system, page structure, tech stack, auth/DB setup, the admin
-> area, and how to run.
+> area, web analytics, the Goodreads import, and how to run.
 > Last updated: 2026-06-20.
 
 ## 0. Where we are right now (restart anchor)
 
-- **Code state:** `HEAD` = `503b85a` on `main`, **pushed to `origin/main` and deployed to
-  Vercel**. Working tree clean (only `.env` differs locally, and it's gitignored).
+- **Code state:** `HEAD` = `7830344` on `main`, **pushed to `origin/main` and deployed to
+  Vercel** (web analytics + password reset). ⚠️ **The Goodreads import feature is built but
+  NOT yet committed** — it lives only in the local working tree (modified + untracked files,
+  see §14). So the live Vercel site does **not** have the Goodreads tab/pages yet; a local
+  `npm run dev` does.
+- ⚠️ **Neon (prod) is missing the two newest tables** — `pageview` (analytics) and
+  `goodreads_book`. `db:push` was only run against the **local Docker** DB. Analytics writes
+  and Goodreads queries **fail-soft** (caught → empty), so prod won't crash, but analytics
+  records nothing and (once Goodreads ships) reviews/shelf show empty until Neon gets both
+  tables. **Apply them to Neon before relying on either in prod** (§8c).
 - **The app is now multi-page** (not one scrolling page): a `(marketing)` route group with
-  real routes (`/`, `/about`, `/benefits`, `/reviews`, `/contact`) plus `/login`, `/dashboard`,
-  `/profile`, and an admin area at `/admin`. The header nav are **route tabs** (§6).
-- **Auth:** email/password **with required email verification** + **Google OAuth**
-  (with trusted account-linking). See §8.
-- **Admin area** (`/admin`, owner only): list users, remove / pause (reversible ban) / promote
-  them, and edit the app's email addresses at runtime. Built on Better Auth's **admin plugin**.
-  `arbeling@gmail.com` is auto-granted the admin role. See §8a.
+  real routes (`/`, `/about`, `/benefits`, `/reviews`, `/goodreads`, `/contact`) plus `/login`,
+  `/reset-password`, `/dashboard`, `/profile`, and an admin area at `/admin`. The header nav are
+  **route tabs** (§6).
+- **Auth:** email/password **with required email verification** + **password reset** (forgot →
+  email link → reset page) + **Google OAuth** (with trusted account-linking). See §8 / §8d.
+- **Admin area** (`/admin`, owner only) — Better Auth **admin plugin**, four tabs: **Users**
+  (list / remove / pause / promote), **Analytics** (first-party traffic), **Goodreads** (import
+  books), **Email settings** (runtime email addresses). `arbeling@gmail.com` is auto-admin. See §8a.
+- **Web Analytics:** Vercel Web Analytics (`<Analytics />`) **+ our own first-party pageview
+  tracking** (beacon → `/api/track` → `pageview` table) shown in the admin Analytics tab. See §8e.
+- **Goodreads import:** admin uploads a Goodreads CSV export and/or syncs the public RSS feed;
+  books land in `goodreads_book` and feed the public **/reviews** (review wall) and **/goodreads**
+  (full shelf: read / currently-reading / want-to-read) pages. See §8f.
 - **Databases:**
   - **Local dev now points at the local Docker Postgres** (`.env` `DATABASE_URL` =
     `postgres://…@localhost:5432/tiffany_tales`). The Neon line is commented out. (This was
@@ -62,11 +76,13 @@ The brand voice is warm, friendly, community-first ("Join my pack today!" — th
 | UI components | **shadcn/ui** | style `base-nova`, base library = **Base UI** (`@base-ui/react`), NOT Radix. icons = **lucide**. Config in `components.json`. |
 | Icons | `lucide-react` (^1.18.0) | ⚠️ Does NOT export `Instagram` — inline SVG used in the footer. Verify an icon exists before importing. |
 | Toasts | `sonner` | `<Toaster />` in `app/layout.tsx`. |
-| Auth | **Better Auth** (^1.6.18) | email+password (**verification required**) + **Google OAuth** + **admin plugin**. See §8. |
+| Auth | **Better Auth** (^1.6.18) | email+password (**verification required** + **password reset**) + **Google OAuth** + **admin plugin**. See §8 / §8d. |
 | ORM | **Drizzle ORM** (^0.45.2) + `drizzle-kit` | `push` (dev) and generated **migration files** (`drizzle/`). |
 | Database | **Postgres 17 via Docker** (active for local dev) / **Neon serverless Postgres** (production) | `.env` `DATABASE_URL` currently = local Docker; Neon is used in prod via Vercel env. See §9. |
 | Hosting | **Vercel** | Prod at **`https://tiffany-s-tales.vercel.app`**; auto-deploys on push to `main`. Env vars set in the Vercel dashboard. |
-| Email | **Resend** (`resend` SDK) | Verification, welcome, admin-notification, and contact emails via `lib/email.ts`. Addresses are runtime-editable (§8b). Needs a verified domain to email non-owner addresses. |
+| Email | **Resend** (`resend` SDK) | Verification, welcome, admin-notification, **password-reset**, and contact emails via `lib/email.ts`. Addresses are runtime-editable (§8b). Needs a verified domain to email non-owner addresses. |
+| Analytics | **`@vercel/analytics`** (^2.0.1) + first-party tracking | `<Analytics />` in root layout (Vercel dashboard) **plus** our own beacon → `/api/track` → `pageview` table, shown in admin. See §8e. |
+| CSV / XML parsing | **`papaparse`** (^5.5.4, + `@types/papaparse`) · **`fast-xml-parser`** (^5.9.3) | For the Goodreads import: papaparse = CSV library export, fast-xml-parser = RSS feed. See §8f. |
 | Fonts | `next/font/google` | Geist (sans) + Playfair Display (display/headings). |
 
 Package manager: **npm**. Path alias: `@/*` → project root (e.g. `@/components/...`, `@/lib/...`).
@@ -136,13 +152,21 @@ Clicking a nav tab navigates to a real page (no more scroll-to-anchor).
    (Sittingbourne & Maidstone cards) + Book of the Month panel. ⚠️ "Pamper Night" was removed — don't re-add.
 2. **`/about`** — "Your literary sanctuary" + FAQ accordion (monthly + Discord; suggestions; £10/month).
 3. **`/benefits`** — 3 photo cards (Real Connection / Lively Discussion / A Fresh Story).
-4. **`/reviews`** — purple testimonial quote card + planner-style 5-star review card.
-5. **`/contact`** — `<ContactForm />`, **wired to actually send** (server action → Resend) to the
+4. **`/reviews`** — the **review wall** (data-driven from `goodreads_book`): the member
+   testimonial card on top, then a grid of read-shelf books that have a rating **or** written
+   review (cover, title, author, stars, date read, full review text). Empty state before import. §8f.
+5. **`/goodreads`** — the **full Good Reads shelf** (data-driven): cover-grid sections —
+   *Currently reading*, *Read* (with stars), *Want to read* — for everything imported, copy
+   references "Riette". Empty state before import. §8f.
+6. **`/contact`** — `<ContactForm />`, **wired to actually send** (server action → Resend) to the
    configured contact recipient, reply-to = sender, optional "send me a copy". See §8b.
 
 **Auth/member routes** (standalone, outside the group):
 - **`/login`** — Tabs: Subscribe | Log in, + "Continue with Google" (when `isGoogleEnabled`).
+  The Log in form has a **"Forgot password?"** link that swaps to a reset-request (email) view. §8d.
   Redirects to `/dashboard` if already authed.
+- **`/reset-password`** — reset page reached from the emailed link; reads `?token=` (or `?error=`),
+  shows a new-password + confirm form (`authClient.resetPassword`), then routes to `/login`. §8d.
 - **`/dashboard`** — protected member home: welcome + stat cards (member since, membership, pack)
   + Book of the Month + next meet-up.
 - **`/profile`** — protected: editable name + photo (`authClient.updateUser`), read-only account
@@ -150,7 +174,8 @@ Clicking a nav tab navigates to a real page (no more scroll-to-anchor).
 - **`/admin`** — owner-only (see §8a).
 
 **Header nav** (`components/site-header.tsx`, client, route-based active state via `usePathname`):
-- Always: Home · About · Book Club Benefits · Book Reviews · Contact.
+- Always: Home · About · Book Club Benefits · Book Reviews · **Good Reads** · Contact (one
+  `navLinks` array drives both the desktop tabs and the mobile `Sheet`).
 - When signed in: **Dashboard · Profile** (and **Admin** when `role === "admin"`), plus the avatar
   `UserMenu`. Logged out: Log in / Join my pack. Mobile = `Sheet` with the same links.
 
@@ -167,29 +192,37 @@ app/
     page.tsx                        # Home (hero + packs + book of the month)
     about/page.tsx                  # About + FAQ
     benefits/page.tsx               # Benefits cards
-    reviews/page.tsx                # Testimonial + review card
+    reviews/page.tsx                # /reviews — review wall (DB: getPublicReviews) §8f
+    goodreads/page.tsx              # /goodreads — full shelf (DB: getPublicBookshelf) §8f
     contact/page.tsx                # Contact page
     contact/actions.ts              # "use server" submitContact -> sendContactEmail
-  login/page.tsx                    # /login — Tabs + Google (redirects if authed)
+  login/page.tsx                    # /login — Tabs + Google + "Forgot password?" (redirects if authed)
+  reset-password/page.tsx           # /reset-password — reads ?token=; <ResetPasswordForm /> §8d
   dashboard/page.tsx                # /dashboard — protected member home
   profile/page.tsx                  # /profile — protected; editable profile + account info
-  admin/page.tsx                    # /admin — requireAdmin(); users + email settings
-  admin/actions.ts                  # "use server" updateSettingsAction (admin-guarded)
+  admin/page.tsx                    # /admin — requireAdmin(); users + analytics + goodreads + email
+  admin/actions.ts                  # "use server" admin actions: settings + Goodreads import (§8f)
   api/auth/[...all]/route.ts        # Better Auth handler (serves /api/auth/* incl. /admin/*)
+  api/track/route.ts                # POST pageview beacon -> pageview table (§8e)
 components/
-  site-header.tsx                   # sticky header: route tabs + auth + mobile Sheet (client)
+  site-header.tsx                   # sticky header: route tabs (incl. Good Reads) + auth + Sheet (client)
   site-footer.tsx                   # deep-plum footer (logo, explore links, Instagram)
   logo.tsx                          # shared Logo (next/image)
   contact-form.tsx                  # contact form (client) -> submitContact server action
+  pageview-tracker.tsx              # client: usePathname -> sendBeacon to /api/track (§8e)
+  book-cover.tsx                    # client: <img> cover w/ placeholder fallback (reviews + goodreads)
   admin/
-    admin-panel.tsx                 # Tabs: Users | Email settings (client)
+    admin-panel.tsx                 # Tabs: Users | Analytics | Goodreads | Email settings (client)
     admin-users-table.tsx           # user table + per-row actions + confirm AlertDialog (client)
     admin-settings-form.tsx         # edit the 3 email addresses (client)
+    admin-analytics.tsx             # analytics dashboard: cards + bar chart + tables, 7/30/90 toggle (§8e)
+    admin-goodreads.tsx             # CSV upload + RSS sync + imported-books list w/ hide toggle (§8f)
   auth/
     user-menu.tsx                   # avatar + dropdown (Dashboard/Profile/Sign out) (client)
-    login-form.tsx                  # signIn.email; handles 403 unverified (client)
+    login-form.tsx                  # signIn.email; 403 unverified; "Forgot password?" mode (client)
     signup-form.tsx                 # signUp.email; shows "check your email" (client)
     profile-form.tsx                # authClient.updateUser name/image (client)
+    reset-password-form.tsx         # authClient.resetPassword; invalid/expired-token state (client)
     sign-out-button.tsx             # signOut (client)
     google-button.tsx               # signIn.social google (client)
     auth-nav.tsx                    # LEGACY — superseded by site-header (unused)
@@ -197,13 +230,15 @@ components/
                                     #   separator sonner field checkbox tabs spinner skeleton sheet
                                     #   avatar dropdown-menu input table alert-dialog
 lib/
-  auth.ts                           # betterAuth() + admin plugin + ADMIN_EMAIL + getSafeSession()
+  auth.ts                           # betterAuth() + admin plugin + sendResetPassword + getSafeSession()
   admin.ts                          # requireAdmin() guard + isAdmin()
-  auth-client.ts                    # createAuthClient({ plugins: [adminClient()] })
+  auth-client.ts                    # createAuthClient; exports requestPasswordReset / resetPassword
   db.ts                             # drizzle + pg Pool (connectionString = DATABASE_URL)
-  email.ts                          # Resend: verification / welcome / admin-notice / contact emails
+  email.ts                          # Resend: verification / welcome / admin-notice / reset / contact
   settings.ts                       # app_settings get/update (runtime email config, env fallback)
-  schema.ts                         # Better Auth tables + admin columns + app_settings
+  analytics.ts                      # getAnalyticsSummary(days) over pageview table (§8e)
+  goodreads.ts                      # CSV/RSS parse + upsert + public/admin queries + user-id setting (§8f)
+  schema.ts                         # auth tables + admin cols + app_settings + pageview + goodreads_book
   utils.ts                          # cn()
 scripts/
   seed-admin.mjs                    # promote an existing owner row to admin (npm run db:seed-admin)
@@ -261,11 +296,15 @@ drizzle.config.ts  components.json  .env / .env.example
   `/dashboard`. This is the real protection; the header "Admin" link is cosmetic.
 - **`/admin` page** (`app/admin/page.tsx`, server): SSR-fetches users via
   `auth.api.listUsers({ query: { limit: 200 }, headers })` + an `account` join for the Provider
-  column + `getSettings()`. Renders `AdminPanel` (Tabs: **Users** | **Email settings**).
+  column + `getSettings()` + `getAnalyticsSummary([7,30,90])` (§8e) + `getAdminBooks()` /
+  `getGoodreadsUserId()` (§8f). Renders `AdminPanel` (Tabs: **Users** | **Analytics** |
+  **Goodreads** | **Email settings**).
   - **Users tab:** table (member, provider, joined, role, status) + per-row dropdown → confirm
     `AlertDialog` → **Make/Revoke admin** (`setRole`), **Pause/Resume** (`banUser`/`unbanUser` —
     reversible, indefinite), **Remove** (`removeUser`). Own-row Pause/Remove disabled. Mutations
     `router.refresh()` to re-fetch.
+  - **Analytics tab:** first-party pageview dashboard — see §8e.
+  - **Goodreads tab:** import books via CSV/RSS + curate visibility — see §8f.
   - **Email settings tab:** edits the 3 addresses (§8b) via an admin-guarded server action.
 
 ### 8b. Runtime-editable email settings (`lib/settings.ts` + `lib/email.ts`)
@@ -276,8 +315,9 @@ drizzle.config.ts  components.json  .env / .env.example
   - `adminNotificationRecipient` ← DB ?? `ADMIN_EMAIL` ?? `arbeling@gmail.com`
   - `contactRecipient` ← DB ?? `CONTACT_EMAIL` ?? `adminNotificationRecipient`
 - `lib/email.ts` reads these **per send** (no module-load constants). Functions: `sendVerificationEmail`,
-  `sendRegistrationEmails` (admin notice + member welcome), `sendContactEmail` (to contact recipient,
-  reply-to = sender, optional copy). All never throw; no-op when `RESEND_API_KEY` is unset.
+  `sendRegistrationEmails` (admin notice + member welcome), **`sendPasswordResetEmail`** (§8d),
+  `sendContactEmail` (to contact recipient, reply-to = sender, optional copy). All never throw;
+  no-op when `RESEND_API_KEY` is unset. All use the shared branded `shell()` HTML wrapper.
 - ⚠️ **Resend domain limitation** (unchanged): in test mode (no verified domain, from
   `onboarding@resend.dev`) Resend only delivers to the **account owner** (`arbeling@gmail.com`).
   Member welcomes / verification to other addresses are **rejected (403)** until a domain is verified
@@ -286,6 +326,18 @@ drizzle.config.ts  components.json  .env / .env.example
 ### 8c. Schema changes & migrations
 - Local Docker DB: edit `lib/schema.ts`, then `npm run db:push` (diffs and applies; the dev workflow).
 - Generated migrations live in `drizzle/` (`0000` base, `0001` admin columns + `app_settings`).
+- **Tables added since (pushed to local Docker only — NOT yet `drizzle/`-generated):**
+  - **`pageview`** — first-party analytics (§8e): `id, path, visitor_id, referrer, country, device,
+    created_at`, index on `created_at`.
+  - **`goodreads_book`** — imported books (§8f): `id, goodreads_id (unique), title, author, isbn,
+    isbn13, cover_url, my_rating, average_rating, my_review, shelf, date_read, date_added,
+    year_published, source, hidden, created_at, updated_at`, index on `shelf`.
+  - ⚠️ **Neon (prod) does NOT have these two tables yet** — only local Docker got `db:push`. The
+    deployed analytics (`/api/track`, admin Analytics) and (once Goodreads ships) the book pages
+    **fail-soft** (try/catch → empty), so prod won't 500, but nothing is recorded/shown until you
+    apply the tables to Neon. To do so: either `db:push` against the Neon `DATABASE_URL`, or run
+    `CREATE TABLE IF NOT EXISTS …` SQL for both directly on Neon (same idempotent approach as the
+    admin migration). Do this **before** relying on analytics/Goodreads in prod.
 - **Neon (production) has been migrated** to the admin schema. Because Neon already had the base
   tables (and a partial `role`/`banned` from earlier), the `0001` changes were applied as
   idempotent `ALTER TABLE … ADD COLUMN IF NOT EXISTS` / `CREATE TABLE IF NOT EXISTS` SQL run
@@ -294,6 +346,73 @@ drizzle.config.ts  components.json  .env / .env.example
   `public.session` has impersonated_by, and `public.app_settings` exists.
   - ℹ️ Neon also has a built-in **`neon_auth` schema** with its own `user` table — unrelated to
     this app, which uses **`public`**. Don't be confused by it when querying.
+
+### 8d. Password reset (forgot password)
+- **Server** (`lib/auth.ts` → `emailAndPassword`): `sendResetPassword: async ({ user, url }) => …`
+  calls `sendPasswordResetEmail` (Resend); `resetPasswordTokenExpiresIn: 3600` (1 hour). Better
+  Auth's `requestPasswordReset` endpoint issues a one-time token and emails a link that lands on
+  our reset page.
+- **Client** (`lib/auth-client.ts` exports `requestPasswordReset`, `resetPassword`):
+  - `login-form.tsx` has a **"Forgot password?"** link → swaps the form to an email-only view →
+    `authClient.requestPasswordReset({ email, redirectTo: \`${origin}/reset-password\` })`. Shows a
+    deliberately **generic** success toast (doesn't reveal whether the email exists).
+  - `/reset-password` (`reset-password-form.tsx`): reads `?token=` from the URL (or `?error=` →
+    "link expired" panel with a back-to-login button); on submit calls
+    `authClient.resetPassword({ newPassword, token })` (validates ≥8 chars + confirm match), then
+    routes to `/login`.
+- ⚠️ Same **Resend domain limitation** as all other mail (§8b): until a domain is verified, reset
+  emails only deliver to `arbeling@gmail.com`.
+
+### 8e. Web Analytics (`@vercel/analytics` + first-party)
+- **Two parallel systems.** (1) **Vercel Web Analytics** — `<Analytics />` from
+  `@vercel/analytics/next` mounted in `app/layout.tsx`; feeds **Vercel's own dashboard** only
+  (Vercel exposes **no public API** to read those numbers back). (2) **First-party tracking** —
+  because of that, we record our own pageviews so the admin can see them in-app.
+- **Flow:** `components/pageview-tracker.tsx` (client, in root layout) watches `usePathname()` and
+  fires `navigator.sendBeacon("/api/track", …)` on each navigation, **skipping** `/admin`,
+  `/dashboard`, `/login`, `/api`. → `app/api/track/route.ts` (POST) mints/reads an opaque
+  first-party visitor cookie **`tt_vid`** (random id, **no IP/PII**, ~180d), filters bots by UA,
+  reads `country` from `x-vercel-ip-country` + coarse device from UA, and inserts a `pageview` row.
+  Always returns 204 (never surfaces errors to visitors).
+- **Aggregation:** `lib/analytics.ts` → `getAnalyticsSummary(days)` returns `totalPageviews`,
+  `uniqueVisitors` (distinct `visitor_id`), `topPaths`, `topReferrers`, `byCountry`, `byDevice`,
+  and a zero-filled `daily` series. Never throws (→ empty on DB error). `/admin` fetches the 7/30/90
+  windows and passes them to **`admin-analytics.tsx`** (stat cards, CSS bar chart, breakdown
+  tables, client-side 7/30/90 toggle — no reloads).
+- Numbers are our own (differ slightly from Vercel's bot-filtering/dedup). ⚠️ Needs the `pageview`
+  table on whichever DB you run against (§8c).
+
+### 8f. Goodreads import (books & reviews)
+- **Why CSV + RSS:** Goodreads **shut down its public API** (no new keys since 2020), so the two
+  viable sources are the **CSV "Export Library"** (complete: full review text, rating, dates, ISBN,
+  shelf) and the **public per-shelf RSS feed** (recent ~100 books, review text often truncated, but
+  includes cover image URLs).
+- **Core (`lib/goodreads.ts`):**
+  - `parseGoodreadsCsv(text)` (papaparse) — cleans Excel-safe ISBNs (`="…"`), strips light HTML
+    from reviews; derives `coverUrl` from ISBN via **Open Library** (`covers.openlibrary.org/b/isbn/
+    {isbn}-L.jpg?default=false`, since CSV has no cover URLs).
+  - `parseGoodreadsRss(xml)` (fast-xml-parser) + `fetchGoodreadsRss(userId)` — reads the `?shelf=read`
+    feed; uses Goodreads' own `book_large_image_url` for covers.
+  - `upsertGoodreadsBooks(books)` — single insert keyed by **`goodreads_id` (unique)** with
+    `onConflictDoUpdate`; enrichment fields **coalesce** so a later null can't wipe data, and the
+    **longer review wins** (RSS truncates). `hidden` is never overwritten (preserves curation).
+    Returns `{ imported, updated, total }`.
+  - Queries: `getPublicReviews()` (read-shelf, not hidden, has rating/review → /reviews),
+    `getPublicBookshelf()` (grouped read / currently-reading / to-read → /goodreads),
+    `getAdminBooks()` (recent + total), `get/setGoodreadsUserId()` (stored in `app_settings` under
+    **`goodreads_user_id`**).
+- **Admin server actions (`app/admin/actions.ts`, all `requireAdmin`-guarded):**
+  `importGoodreadsCsvAction` (reads the uploaded `File` from FormData, ≤10MB, parses + upserts),
+  `syncGoodreadsRssAction` (saves the numeric user id, fetches + parses + upserts),
+  `setBookHiddenAction(bookId, hidden)` (toggle public visibility). All `revalidatePath` `/admin`,
+  `/reviews`, `/goodreads`.
+- **Admin UI (`admin-goodreads.tsx`):** CSV-upload card + RSS-sync card (`useActionState`, file/text
+  inputs) + an imported-books table with per-row **show/hide** (Eye toggle) and a count badge.
+- **Public pages** consume the queries (§6): `/reviews` (review wall) and `/goodreads` (full shelf),
+  both using `components/book-cover.tsx` (`<img>` with placeholder fallback — chosen over
+  `next/image` to avoid configuring many external cover domains). Copy on `/goodreads` references
+  **"Riette"**.
+- ⚠️ Needs the `goodreads_book` table on whichever DB you run against (§8c).
 
 ### Google OAuth (`.design/.specs/better_auth.md`)
 - Config in `lib/auth.ts` `socialProviders.google` (`prompt: "select_account"`), guarded by
@@ -412,8 +531,10 @@ Neon URL). 3. `git push origin main` → Vercel auto-builds & deploys.
 - **Google errors:** `redirect_uri_mismatch` = sent `redirect_uri` not registered on that client
   (diagnose with the §0 curl); `account_not_linked` = handled by account linking (§8). Keep the
   right OAuth client per environment (local `1rg`, prod `om1`).
-- **Admin schema needs both DBs.** Any new admin/schema column must be applied to **both** the local
-  Docker DB and Neon, or the side that's missing it will 500 on session reads.
+- **Schema changes need both DBs.** Any new column/table must be applied to **both** the local
+  Docker DB and Neon. Auth/admin columns 500 on session reads if missing; the newer `pageview` +
+  `goodreads_book` tables fail-soft (try/catch → empty) so prod won't crash, but stays empty until
+  Neon has them (§8c). Currently **Neon is missing both** of those tables.
 - **Checkpoint skill** (`.claude/skills/checkpoint/`): say "checkpoint" / `/checkpoint` to lint +
   type-check + build, then commit everything (skips `.env`); it does **not** push.
 
@@ -427,21 +548,28 @@ Neon URL). 3. `git push origin main` → Vercel auto-builds & deploys.
   FAQs, testimonial, contact, location). Canonical copy source.
 - `better_auth.md` — Better Auth Google provider reference.
 - `ADMIN_PLAN.md` — the admin-feature implementation plan.
+- `vercel-web-analytics-admin.md` — the web-analytics implementation plan (§8e).
 
 ---
 
 ## 13. Suggested next steps
 
-Done recently: **multi-page restructure** (route tabs), **dashboard + profile pages**, **required
-email verification** (Resend), **Google account linking**, the **admin area** (users +
-runtime-editable email settings), **contact form wired to send**, local DB switched to **Docker**,
-**Neon migrated** to the admin schema, and all of it **deployed to Vercel** (`503b85a`).
+Done recently: **multi-page restructure**, **dashboard + profile pages**, **required email
+verification**, **Google account linking**, the **admin area**, **contact form wired to send**,
+local DB on **Docker**, **Neon migrated** to the admin schema (all deployed at `503b85a`); then
+**web analytics** (Vercel + first-party) and **password reset** (deployed at `7830344`); and most
+recently the **Goodreads import** (CSV + RSS → admin tab; public `/reviews` + `/goodreads` pages)
+— **built and verified locally but NOT yet committed/deployed** (§0, §14).
 
-- [ ] **Verify a Resend domain** so member welcome + verification emails deliver to non-owner
+- [ ] **Commit + push the Goodreads feature** (run `checkpoint`), then it auto-deploys to Vercel.
+- [ ] **Apply `pageview` + `goodreads_book` to Neon** before relying on analytics/Goodreads in prod
+      (§8c) — `db:push` against the Neon URL or `CREATE TABLE IF NOT EXISTS` SQL.
+- [ ] (Optional) **Generate `drizzle/` migration files** for `pageview` + `goodreads_book` (so far
+      only applied via `db:push`).
+- [ ] **Verify a Resend domain** so welcome/verification/**reset** emails deliver to non-owner
       addresses, then set `RESEND_FROM` (or the admin "From address") + add `RESEND_API_KEY` to Vercel (§8b).
 - [ ] **Rotate the Neon DB password** (shared in plain text).
 - [ ] (Optional) Set `BETTER_AUTH_URL=https://tiffany-s-tales.vercel.app` in Vercel so env matches code.
-- [ ] **Password reset** (Better Auth `sendResetPassword`).
 - [ ] Real **billing** for the £10/month membership (scaffold hinted at Polar).
 - [ ] Capture extra sign-up fields (e.g. **preferred pack**) via Better Auth `user.additionalFields`.
 - [ ] Replace placeholder Unsplash photos + clip-art logo with **real brand assets** (transparent-PNG logo).
@@ -455,9 +583,15 @@ runtime-editable email settings), **contact form wired to send**, local DB switc
 
 - Branch: `main`, tracks `origin/main` (`github.com/xxxarbel/tiffany-s_tales`). Vercel auto-deploys
   every push to `main`.
-- Recent history (newest last): … → Resend registration emails (`624460a`) → **member dashboard +
-  profile pages** (`2285385`) → **admin area + multi-page split + email verification** (`503b85a`).
-- **State now:** `HEAD` = `503b85a` on `main`, **pushed and deployed**. Working tree clean (only the
-  gitignored `.env`, which points at the local Docker DB, differs).
+- Recent history (newest last): … → **member dashboard + profile pages** (`2285385`) → **admin area
+  + multi-page split + email verification** (`503b85a`) → **web analytics dashboard + password
+  reset** (`7830344`).
+- **State now:** `HEAD` = `origin/main` = `7830344`, **pushed and deployed**. ⚠️ **The Goodreads
+  import feature is UNCOMMITTED** in the working tree — modified: `app/(marketing)/reviews/page.tsx`,
+  `app/admin/actions.ts`, `app/admin/page.tsx`, `components/admin/admin-panel.tsx`,
+  `components/site-header.tsx`, `lib/schema.ts`, `package.json(+lock)`; untracked:
+  `app/(marketing)/goodreads/`, `components/admin/admin-goodreads.tsx`, `components/book-cover.tsx`,
+  `lib/goodreads.ts`. Run `checkpoint` to commit (lint + type-check + build all pass), then push to
+  deploy. (Also untracked: the two `.design/.specs/*.md` plan docs for analytics/Goodreads.)
 - ⚠️ `.env` is gitignored and holds live secrets — keep it that way. `checkpoint` commits but does **not** push.
 ```

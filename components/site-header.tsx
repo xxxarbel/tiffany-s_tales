@@ -32,6 +32,8 @@ const navLinks = [
   { label: "About", href: "/about" },
   { label: "Book Club Benefits", href: "/benefits" },
   { label: "Book Reviews", href: "/reviews" },
+  { label: "Good Reads", href: "/goodreads" },
+  { label: "Instagram", href: "/instagram" },
   { label: "Contact", href: "/contact" },
 ]
 

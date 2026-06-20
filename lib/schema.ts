@@ -1,4 +1,11 @@
-import { boolean, index, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  index,
+  integer,
+  pgTable,
+  text,
+  timestamp,
+} from "drizzle-orm/pg-core";
 
 // Better Auth core tables (Postgres). Column names are snake_case in the DB;
 // the property names match Better Auth's model fields.
@@ -100,6 +107,70 @@ export const pageview = pgTable(
   (table) => [index("pageview_created_at_idx").on(table.createdAt)]
 );
 
+// Books and reviews imported from Goodreads — via CSV export upload and/or the
+// public RSS feed (Goodreads retired its API, so those are the two viable
+// sources). One row per book, keyed by `goodreadsId` so re-imports/syncs upsert
+// rather than duplicate. The `read`-shelf rows with a rating/review feed the
+// public /reviews page; `hidden` lets the owner curate what shows there.
+export const goodreadsBook = pgTable(
+  "goodreads_book",
+  {
+    id: text("id").primaryKey(),
+    goodreadsId: text("goodreads_id").notNull().unique(),
+    title: text("title").notNull(),
+    author: text("author"),
+    isbn: text("isbn"),
+    isbn13: text("isbn13"),
+    coverUrl: text("cover_url"),
+    myRating: integer("my_rating"), // 0–5; 0 means unrated
+    averageRating: text("average_rating"),
+    myReview: text("my_review"),
+    shelf: text("shelf"), // exclusive shelf: read / currently-reading / to-read
+    dateRead: timestamp("date_read"),
+    dateAdded: timestamp("date_added"),
+    yearPublished: integer("year_published"),
+    source: text("source"), // "csv" | "rss"
+    hidden: boolean("hidden").$defaultFn(() => false).notNull(),
+    createdAt: timestamp("created_at")
+      .$defaultFn(() => new Date())
+      .notNull(),
+    updatedAt: timestamp("updated_at")
+      .$defaultFn(() => new Date())
+      .notNull(),
+  },
+  (table) => [index("goodreads_book_shelf_idx").on(table.shelf)]
+);
+
+// Book-review posts synced from Instagram (@tiffanystales). Meta retired the
+// Instagram Basic Display API and personal accounts can't be read by any API,
+// so the source is a Behold.so JSON feed (behold.so connects the Professional
+// account and handles Meta's tokens). One row per post, keyed by `instagramId`
+// so re-syncs upsert rather than duplicate. Non-hidden rows feed the public
+// /instagram page and a section on /reviews; `hidden` lets the owner curate.
+export const instagramPost = pgTable(
+  "instagram_post",
+  {
+    id: text("id").primaryKey(),
+    instagramId: text("instagram_id").notNull().unique(), // Behold post id — upsert key
+    permalink: text("permalink"),
+    caption: text("caption"), // review text (prefer Behold prunedCaption)
+    mediaType: text("media_type"), // IMAGE | VIDEO | CAROUSEL_ALBUM
+    imageUrl: text("image_url"),
+    altText: text("alt_text"),
+    likeCount: integer("like_count"),
+    commentsCount: integer("comments_count"),
+    postedAt: timestamp("posted_at"),
+    hidden: boolean("hidden").$defaultFn(() => false).notNull(),
+    createdAt: timestamp("created_at")
+      .$defaultFn(() => new Date())
+      .notNull(),
+    updatedAt: timestamp("updated_at")
+      .$defaultFn(() => new Date())
+      .notNull(),
+  },
+  (table) => [index("instagram_post_posted_at_idx").on(table.postedAt)]
+);
+
 export const schema = {
   user,
   session,
@@ -107,4 +178,6 @@ export const schema = {
   verification,
   appSettings,
   pageview,
+  goodreadsBook,
+  instagramPost,
 };

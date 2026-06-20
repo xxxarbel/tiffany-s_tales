@@ -6,6 +6,8 @@ import { db } from "@/lib/db";
 import { account } from "@/lib/schema";
 import { getSettings } from "@/lib/settings";
 import { getAnalyticsSummary } from "@/lib/analytics";
+import { getAdminBooks, getGoodreadsUserId } from "@/lib/goodreads";
+import { getAdminPosts, getBeholdFeedUrl } from "@/lib/instagram";
 import { SiteHeader } from "@/components/site-header";
 import { AdminPanel } from "@/components/admin/admin-panel";
 
@@ -43,6 +45,16 @@ export default async function AdminPage() {
     [7, 30, 90].map((days) => getAnalyticsSummary(days))
   );
 
+  // Goodreads import data: recent books + total + the saved RSS user id.
+  const [{ books, total }, goodreadsUserId] = await Promise.all([
+    getAdminBooks(),
+    getGoodreadsUserId(),
+  ]);
+
+  // Instagram import data: recent posts + total + the saved Behold feed URL.
+  const [{ posts: instagramPosts, total: instagramTotal }, beholdFeedUrl] =
+    await Promise.all([getAdminPosts(), getBeholdFeedUrl()]);
+
   return (
     <div className="min-h-svh bg-muted/40">
       <SiteHeader />
@@ -61,6 +73,12 @@ export default async function AdminPage() {
           currentUserId={session.user.id}
           settings={settings}
           analytics={analytics}
+          goodreads={{ books, total, userId: goodreadsUserId }}
+          instagram={{
+            posts: instagramPosts,
+            total: instagramTotal,
+            feedUrl: beholdFeedUrl,
+          }}
         />
       </main>
     </div>
