@@ -6,6 +6,12 @@ import { appSettings, instagramPost } from "@/lib/schema";
 
 const INSTAGRAM_BEHOLD_FEED_URL_KEY = "instagram_behold_feed_url";
 
+// The @tiffanystales Behold JSON feed. Used as the default when no URL has been
+// configured in admin yet, so the public pages and the daily cron sync work
+// out of the box. The admin can still override it via the Instagram tab.
+export const DEFAULT_BEHOLD_FEED_URL =
+  "https://feeds.behold.so/B69HSEq0diccWSOVNBUX";
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -231,17 +237,40 @@ export async function getAdminPosts(
   }
 }
 
-export async function getBeholdFeedUrl(): Promise<string | null> {
+export async function getBeholdFeedUrl(): Promise<string> {
   try {
     const [row] = await db
       .select({ value: appSettings.value })
       .from(appSettings)
       .where(eq(appSettings.key, INSTAGRAM_BEHOLD_FEED_URL_KEY));
-    return row?.value?.trim() || null;
+    return row?.value?.trim() || DEFAULT_BEHOLD_FEED_URL;
   } catch (error) {
     console.error("[instagram] getBeholdFeedUrl failed:", error);
-    return null;
+    return DEFAULT_BEHOLD_FEED_URL;
   }
+}
+
+/**
+ * Fetch the Behold feed and upsert its posts. Shared by the admin sync action
+ * and the daily cron route. Resolves the URL from the argument, else from
+ * settings (which falls back to DEFAULT_BEHOLD_FEED_URL). SSRF-guarded before
+ * any fetch; throws on a bad URL, an unreachable feed, or an empty feed so
+ * callers can surface an error. Does not revalidate — that's the caller's job.
+ */
+export async function syncInstagramFeed(
+  feedUrl?: string
+): Promise<{ imported: number; updated: number; total: number }> {
+  const url = (feedUrl ?? (await getBeholdFeedUrl())).trim();
+  if (!isBeholdUrl(url)) {
+    throw new Error("Invalid Behold feed URL");
+  }
+  await setBeholdFeedUrl(url);
+  const feed = await fetchBeholdFeed(url);
+  const posts = parseBeholdFeed(feed);
+  if (posts.length === 0) {
+    throw new Error("Behold feed contained no posts");
+  }
+  return upsertInstagramPosts(posts);
 }
 
 export async function setBeholdFeedUrl(url: string): Promise<void> {

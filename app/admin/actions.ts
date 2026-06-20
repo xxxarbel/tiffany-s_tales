@@ -15,13 +15,7 @@ import {
   setGoodreadsUserId,
   upsertGoodreadsBooks,
 } from "@/lib/goodreads";
-import {
-  fetchBeholdFeed,
-  isBeholdUrl,
-  parseBeholdFeed,
-  setBeholdFeedUrl,
-  upsertInstagramPosts,
-} from "@/lib/instagram";
+import { isBeholdUrl, syncInstagramFeed } from "@/lib/instagram";
 
 export type SettingsState = { ok: boolean; error?: string } | null;
 
@@ -210,16 +204,7 @@ export async function syncInstagramAction(
   }
 
   try {
-    await setBeholdFeedUrl(feedUrl);
-    const feed = await fetchBeholdFeed(feedUrl);
-    const posts = parseBeholdFeed(feed);
-    if (posts.length === 0) {
-      return {
-        ok: false,
-        error: "No posts in that feed — check the Behold feed URL.",
-      };
-    }
-    const result = await upsertInstagramPosts(posts);
+    const result = await syncInstagramFeed(feedUrl);
     revalidateBookPages();
     return { ok: true, ...result };
   } catch (error) {
