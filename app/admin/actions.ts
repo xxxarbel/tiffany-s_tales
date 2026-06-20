@@ -8,7 +8,6 @@ import { updateSettings } from "@/lib/settings";
 import { db } from "@/lib/db";
 import { goodreadsBook, instagramPost } from "@/lib/schema";
 import {
-  enrichCovers,
   fetchGoodreadsRss,
   parseGoodreadsCsv,
   parseGoodreadsRss,
@@ -111,9 +110,11 @@ export async function importGoodreadsCsvAction(
         error: "No books found — is this a Goodreads library export?",
       };
     }
-    // Resolve a real cover for every book (Open Library / Google Books).
-    const books = await enrichCovers(parsed);
-    const result = await upsertGoodreadsBooks(books);
+    // Upsert immediately (no inline cover resolution — that makes thousands of
+    // external lookups and times out on Vercel for a full library). Covers are
+    // filled in afterwards by the background job (see resolveMissingCovers /
+    // /api/cron/goodreads-covers); until then BookCover shows a text fallback.
+    const result = await upsertGoodreadsBooks(parsed);
     revalidateBookPages();
     return { ok: true, ...result };
   } catch (error) {
@@ -150,9 +151,9 @@ export async function syncGoodreadsRssAction(
         error: "No books in that feed — check the user id is public.",
       };
     }
-    // Resolve a real cover for every book (Goodreads image / Open Library / Google Books).
-    const books = await enrichCovers(parsed);
-    const result = await upsertGoodreadsBooks(books);
+    // RSS already carries Goodreads' own cover images, so upsert directly. The
+    // background job (resolveMissingCovers) fills any that came through empty.
+    const result = await upsertGoodreadsBooks(parsed);
     revalidateBookPages();
     return { ok: true, ...result };
   } catch (error) {

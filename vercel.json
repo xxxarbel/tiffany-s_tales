@@ -1,5 +1,6 @@
 {
   "crons": [
-    { "path": "/api/cron/instagram-sync", "schedule": "0 6 * * *" }
+    { "path": "/api/cron/instagram-sync", "schedule": "0 6 * * *" },
+    { "path": "/api/cron/goodreads-covers", "schedule": "30 6 * * *" }
   ]
 }

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import Papa from "papaparse";
 import { XMLParser } from "fast-xml-parser";
-import { and, desc, eq, gt, inArray, or, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull, like, or, sql } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import { appSettings, goodreadsBook } from "@/lib/schema";
@@ -345,6 +345,71 @@ export function parseGoodreadsRss(xml: string): NormalizedBook[] {
     });
   }
   return books;
+}
+
+/**
+ * Background cover backfill. Imports upsert books fast (no inline cover
+ * resolution — that times out on a full library), leaving some rows with no
+ * cover or only an unverified Open Library ISBN-guess URL. This resolves a
+ * bounded batch of those via `resolveCoverUrl` and writes back the result.
+ * Time-bounded (`deadlineMs`) so it fits inside a serverless function limit;
+ * call it repeatedly (cron / admin) to drain the backlog. Returns counts.
+ */
+export async function resolveMissingCovers(opts?: {
+  limit?: number;
+  deadlineMs?: number;
+}): Promise<{ scanned: number; updated: number; remaining: number }> {
+  const limit = opts?.limit ?? 80;
+  const deadlineMs = opts?.deadlineMs ?? 50_000;
+  const started = Date.now();
+
+  // "Needs a cover" = null, or still the unverified ISBN-guess URL the parser
+  // sets (covers.openlibrary.org/b/isbn/… with default=false, which 404s when
+  // there's no cover). Verified covers (OL by id, Google Books, Goodreads) are
+  // left alone, so this never re-processes already-good rows.
+  const needsCover = or(
+    isNull(goodreadsBook.coverUrl),
+    like(goodreadsBook.coverUrl, "%/b/isbn/%")
+  );
+
+  const rows = await db
+    .select()
+    .from(goodreadsBook)
+    .where(needsCover)
+    .orderBy(desc(goodreadsBook.dateRead), desc(goodreadsBook.updatedAt))
+    .limit(limit);
+
+  let scanned = 0;
+  let updated = 0;
+  const CONCURRENCY = 8;
+  let cursor = 0;
+
+  async function worker() {
+    while (cursor < rows.length && Date.now() - started < deadlineMs) {
+      const book = rows[cursor++];
+      scanned++;
+      const resolved = await resolveCoverUrl(book);
+      // Only write a real (verified) cover; don't overwrite with another guess.
+      if (resolved && resolved !== book.coverUrl && !resolved.includes("/b/isbn/")) {
+        await db
+          .update(goodreadsBook)
+          .set({ coverUrl: resolved, updatedAt: new Date() })
+          .where(eq(goodreadsBook.id, book.id));
+        updated++;
+      }
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(CONCURRENCY, rows.length) }, worker)
+  );
+
+  const [{ count }] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(goodreadsBook)
+    .where(needsCover);
+
+  return { scanned, updated, remaining: Number(count) };
 }
 
 // ---------------------------------------------------------------------------
