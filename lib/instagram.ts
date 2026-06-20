@@ -9,8 +9,12 @@ const INSTAGRAM_BEHOLD_FEED_URL_KEY = "instagram_behold_feed_url";
 // The @tiffanystales Behold JSON feed. Used as the default when no URL has been
 // configured in admin yet, so the public pages and the daily cron sync work
 // out of the box. The admin can still override it via the Instagram tab.
+// NOTE: this is the *feed* id (from app.behold.so), NOT the widget id — the
+// widget id (B69HSEq0diccWSOVNBUX) 404s on feeds.behold.so. Behold's free plan
+// caps this feed at the 6 most recent posts; the daily sync accumulates more
+// over time (we never delete), and raising Behold's post limit exposes more.
 export const DEFAULT_BEHOLD_FEED_URL =
-  "https://feeds.behold.so/B69HSEq0diccWSOVNBUX";
+  "https://feeds.behold.so/jAqgUAD6CVwfWmBrRzzd";
 
 // ---------------------------------------------------------------------------
 // Types
