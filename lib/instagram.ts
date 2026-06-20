@@ -103,6 +103,26 @@ export function isBeholdUrl(url: string): boolean {
   return host === "behold.so" || host.endsWith(".behold.so");
 }
 
+/**
+ * Map a Behold URL to its JSON feed form. The Behold *dashboard* URL
+ * (`app.behold.so/feeds/<id>`) serves an HTML page, not JSON — pasting it would
+ * make the fetch return `<!doctype …>` and JSON.parse blow up. The actual feed
+ * lives at `feeds.behold.so/<id>`, so we rewrite the dashboard form to it.
+ * Anything else is returned unchanged.
+ */
+export function normalizeBeholdFeedUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    if (parsed.hostname.toLowerCase() === "app.behold.so") {
+      const match = parsed.pathname.match(/\/feeds\/([^/]+)/);
+      if (match) return `https://feeds.behold.so/${match[1]}`;
+    }
+    return url;
+  } catch {
+    return url;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Fetch + parse (mirrors fetchGoodreadsRss / parseGoodreadsRss)
 // ---------------------------------------------------------------------------
@@ -115,6 +135,14 @@ export async function fetchBeholdFeed(url: string): Promise<BeholdFeed> {
   });
   if (!res.ok) {
     throw new Error(`Behold feed returned ${res.status}`);
+  }
+  // A wrong URL (e.g. the HTML dashboard page) returns 200 with HTML, which
+  // would crash JSON.parse with a cryptic "<!doctype" error. Fail clearly.
+  const contentType = res.headers.get("content-type") ?? "";
+  if (!contentType.includes("json")) {
+    throw new Error(
+      `Behold feed returned ${contentType || "non-JSON"} — use the JSON feed URL (https://feeds.behold.so/...)`
+    );
   }
   return (await res.json()) as BeholdFeed;
 }
@@ -260,10 +288,11 @@ export async function getBeholdFeedUrl(): Promise<string> {
 export async function syncInstagramFeed(
   feedUrl?: string
 ): Promise<{ imported: number; updated: number; total: number }> {
-  const url = (feedUrl ?? (await getBeholdFeedUrl())).trim();
-  if (!isBeholdUrl(url)) {
+  const raw = (feedUrl ?? (await getBeholdFeedUrl())).trim();
+  if (!isBeholdUrl(raw)) {
     throw new Error("Invalid Behold feed URL");
   }
+  const url = normalizeBeholdFeedUrl(raw);
   await setBeholdFeedUrl(url);
   const feed = await fetchBeholdFeed(url);
   const posts = parseBeholdFeed(feed);
