@@ -5,6 +5,7 @@ import { nextCookies } from "better-auth/next-js";
 
 import { db } from "@/lib/db";
 import { schema } from "@/lib/schema";
+import { sendRegistrationEmails } from "@/lib/email";
 
 // Google sign-in activates only once both credentials are provided, so the app
 // keeps building and running with email/password before Google is configured.
@@ -57,6 +58,23 @@ export const auth = betterAuth({
         },
       }
     : undefined,
+  databaseHooks: {
+    user: {
+      create: {
+        // Fires after a user row is created — covers both email/password and
+        // Google sign-up. Emails the owner and welcomes the new member.
+        // sendRegistrationEmails never throws, so a mail failure can't break
+        // registration; the extra try/catch is belt-and-suspenders.
+        after: async (user) => {
+          try {
+            await sendRegistrationEmails({ name: user.name, email: user.email });
+          } catch (error) {
+            console.error("[auth] registration emails failed:", error);
+          }
+        },
+      },
+    },
+  },
   // nextCookies must be the last plugin so it can set cookies on responses.
   plugins: [nextCookies()],
 });
