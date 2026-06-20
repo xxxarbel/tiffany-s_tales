@@ -15,9 +15,11 @@
   - ⛔ **Remaining blocker (only the owner can do this, in Google Cloud Console):** add that
     exact redirect URI to OAuth client **`630431076354-om1jpc03…apps.googleusercontent.com`**
     (the client whose ID is set in Vercel). Until then Google returns `redirect_uri_mismatch`.
-- **Registration emails (Resend):** new — on every sign-up the owner gets a notification and the
-  new member gets a welcome (§8). ✅ Admin mail to `arbeling@gmail.com` works; ⚠️ member emails
-  need a **verified Resend domain** (test mode only delivers to the account owner).
+- **Registration emails (Resend):** on every sign-up the owner gets a notification and the new
+  member gets a welcome (§8). ✅ Admin mail to `arbeling@gmail.com` works; ⚠️ member emails need a
+  **verified Resend domain** (test mode only delivers to the account owner). ⚠️ **Committed locally
+  (`624460a`) but NOT yet pushed** — so it's not in production until `git push origin main` runs,
+  and `RESEND_API_KEY` is added to Vercel's env.
 - **Open cleanups:** duplicate `GOOGLE_*` keys in `.env` (§9), rotate the Neon DB password (§9).
 - **Verify production OAuth quickly** (no browser needed):
   ```bash
@@ -453,8 +455,10 @@ and the **production auth fixes** (`trustedOrigins` + Vercel-aware `baseURL`) de
 - Recent history (newest last): … → session-read hardening (`getSafeSession`) → Drizzle auth
   migration + Neon production setup (`d0d9940`) → DESIGN.md refresh + checkpoint skill (`2f3177e`)
   → **trust Vercel origins** (`8cfed12`) → **force production base URL on Vercel** (`ad5cb21`)
-  → **Resend registration emails** (this checkpoint).
-- **State at last update:** production auth code live through `ad5cb21`; this checkpoint adds
-  Resend registration emails (`lib/email.ts` + the `user.create.after` hook) and these docs.
-  ⚠️ `.env` is gitignored (and holds live secrets) — keep it that way. `checkpoint` commits but
-  does **not** push; push manually (`git push origin main`) to trigger the Vercel deploy.
+  → **Resend registration emails** (`624460a`).
+- **State now:** `HEAD` = `624460a` on `main`; working tree clean. **`origin/main` is at `ad5cb21`,
+  so `624460a` (Resend emails + docs) is committed locally but UNPUSHED** — production therefore
+  does *not* yet have the email feature. Run `git push origin main` to deploy it (and add
+  `RESEND_API_KEY` to Vercel first, or prod sign-ups silently skip the emails).
+- ⚠️ `.env` is gitignored (and holds live secrets) — keep it that way. `checkpoint` commits but
+  does **not** push.
