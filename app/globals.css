@@ -153,3 +153,22 @@ body {
     scroll-behavior: auto;
   }
 }
+
+/* Tour highlight applied by the voice guide (highlight_element tool). A sage/plum
+   ring + soft glow that draws the eye without obscuring content. */
+.va-highlight {
+  outline: 3px solid var(--color-sage);
+  outline-offset: 4px;
+  border-radius: var(--radius);
+  box-shadow:
+    0 0 0 6px color-mix(in srgb, var(--color-sage) 25%, transparent),
+    0 0 28px 4px color-mix(in srgb, var(--color-purple) 45%, transparent);
+  transition: outline-color 0.3s ease, box-shadow 0.3s ease;
+  scroll-margin-top: 6rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .va-highlight {
+    transition: none;
+  }
+}

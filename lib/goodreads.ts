@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import Papa from "papaparse";
 import { XMLParser } from "fast-xml-parser";
-import { and, desc, eq, gt, inArray, isNull, like, or, sql } from "drizzle-orm";
+import { and, desc, eq, gt, ilike, inArray, isNull, like, or, sql } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import { appSettings, goodreadsBook } from "@/lib/schema";
@@ -560,6 +560,108 @@ export async function getPublicBookshelf(): Promise<{
   } catch (error) {
     console.error("[goodreads] getPublicBookshelf failed:", error);
     return { read: [], currentlyReading: [], toRead: [] };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Voice assistant queries — back the search_books / book_of_the_month tools.
+// These return lightweight rows for the agent to read aloud, over the same
+// non-hidden books the public site shows.
+// ---------------------------------------------------------------------------
+
+export type BookMatch = {
+  title: string;
+  author: string | null;
+  shelf: string | null;
+  myRating: number | null;
+};
+
+/**
+ * Case-insensitive search of the club's non-hidden shelves by title or author,
+ * for the voice agent's search_books tool. Read books first (the club's actual
+ * history), then by rating, so recommendations surface well-liked reads.
+ */
+export async function searchBooks(q: string, limit = 5): Promise<BookMatch[]> {
+  const term = q.trim();
+  if (!term) return [];
+  const pattern = `%${term}%`;
+  try {
+    return await db
+      .select({
+        title: goodreadsBook.title,
+        author: goodreadsBook.author,
+        shelf: goodreadsBook.shelf,
+        myRating: goodreadsBook.myRating,
+      })
+      .from(goodreadsBook)
+      .where(
+        and(
+          eq(goodreadsBook.hidden, false),
+          or(
+            ilike(goodreadsBook.title, pattern),
+            ilike(goodreadsBook.author, pattern)
+          )
+        )
+      )
+      .orderBy(
+        sql`(${goodreadsBook.shelf} = 'read') desc`,
+        sql`${goodreadsBook.myRating} desc nulls last`
+      )
+      .limit(limit);
+  } catch (error) {
+    console.error("[goodreads] searchBooks failed:", error);
+    return [];
+  }
+}
+
+/**
+ * The club's current Book of the Month for the voice agent: the most recently
+ * added book on the `currently-reading` shelf, falling back to the most recent
+ * read if nothing is currently being read.
+ */
+export async function getBookOfTheMonth(): Promise<BookMatch | null> {
+  try {
+    const [current] = await db
+      .select({
+        title: goodreadsBook.title,
+        author: goodreadsBook.author,
+        shelf: goodreadsBook.shelf,
+        myRating: goodreadsBook.myRating,
+      })
+      .from(goodreadsBook)
+      .where(
+        and(
+          eq(goodreadsBook.hidden, false),
+          eq(goodreadsBook.shelf, "currently-reading")
+        )
+      )
+      .orderBy(
+        sql`${goodreadsBook.dateAdded} desc nulls last`,
+        desc(goodreadsBook.updatedAt)
+      )
+      .limit(1);
+    if (current) return current;
+
+    const [latestRead] = await db
+      .select({
+        title: goodreadsBook.title,
+        author: goodreadsBook.author,
+        shelf: goodreadsBook.shelf,
+        myRating: goodreadsBook.myRating,
+      })
+      .from(goodreadsBook)
+      .where(
+        and(eq(goodreadsBook.hidden, false), eq(goodreadsBook.shelf, "read"))
+      )
+      .orderBy(
+        sql`${goodreadsBook.dateRead} desc nulls last`,
+        desc(goodreadsBook.dateAdded)
+      )
+      .limit(1);
+    return latestRead ?? null;
+  } catch (error) {
+    console.error("[goodreads] getBookOfTheMonth failed:", error);
+    return null;
   }
 }
 

@@ -33,6 +33,12 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
+# voice-agent reference scaffold (separate app with its own secrets — not part of this repo)
+/.claude/.APP/
+
+# personal Goodreads library exports (reading-history data, not app code)
+/goodreads_library_export*.csv
+
 # vercel
 .vercel
 

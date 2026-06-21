@@ -34,7 +34,7 @@ export default function HomePage() {
   return (
     <>
       {/* Hero */}
-      <section className="relative overflow-hidden bg-gradient-to-br from-primary to-plum text-cream">
+      <section id="hero" className="relative overflow-hidden bg-gradient-to-br from-primary to-plum text-cream">
         <div className="mx-auto grid max-w-6xl items-center gap-12 px-6 py-20 sm:py-28 lg:grid-cols-2">
           <div className="text-center lg:text-left">
             <Badge

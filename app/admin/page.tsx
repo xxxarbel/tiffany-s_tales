@@ -8,6 +8,7 @@ import { getSettings } from "@/lib/settings";
 import { getAnalyticsSummary } from "@/lib/analytics";
 import { getAdminBooks, getGoodreadsUserId } from "@/lib/goodreads";
 import { getAdminPosts, getBeholdFeedUrl } from "@/lib/instagram";
+import { getVoiceAgentConfig } from "@/lib/voice/agent-config";
 import { SiteHeader } from "@/components/site-header";
 import { AdminPanel } from "@/components/admin/admin-panel";
 
@@ -55,6 +56,9 @@ export default async function AdminPage() {
   const [{ posts: instagramPosts, total: instagramTotal }, beholdFeedUrl] =
     await Promise.all([getAdminPosts(), getBeholdFeedUrl()]);
 
+  // The owner-editable voice assistant config (model, voice, prompt).
+  const voiceConfig = await getVoiceAgentConfig();
+
   return (
     <div className="min-h-svh bg-muted/40">
       <SiteHeader />
@@ -79,6 +83,7 @@ export default async function AdminPage() {
             total: instagramTotal,
             feedUrl: beholdFeedUrl,
           }}
+          voiceConfig={voiceConfig}
         />
       </main>
     </div>
