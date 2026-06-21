@@ -27,6 +27,9 @@ import type {
 } from "@/lib/voice-agent/types";
 
 interface VoiceAgentContextValue {
+  /** False until the config loads, and stays false if the server has no Deepgram
+   *  key — the launcher hides itself rather than showing a broken assistant. */
+  enabled: boolean;
   status: VoiceAgentStatus;
   transcript: TranscriptEntry[];
   error: string | null;
@@ -141,6 +144,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [muted, setMuted] = useState(false);
+  const [enabled, setEnabled] = useState(false);
 
   const [client] = useState(() =>
     createClient(router, {
@@ -160,11 +164,14 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
       try {
         const res = await fetch(VOICE_CONFIG_ENDPOINT);
         const data = await res.json();
-        if (active && data?.config) {
+        if (!active) return;
+        if (data?.config) {
           client.setConfig({ ...DEFAULT_AGENT_CONFIG, ...data.config });
         }
+        // Only reveal the launcher when the server actually has a Deepgram key.
+        if (data?.enabled) setEnabled(true);
       } catch {
-        /* keep defaults if the config endpoint is unavailable */
+        /* keep defaults + stay hidden if the config endpoint is unavailable */
       }
     })();
     return () => {
@@ -201,6 +208,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo(
     () => ({
+      enabled,
       status,
       transcript,
       error,
@@ -209,7 +217,7 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
       disconnect,
       toggleMute,
     }),
-    [status, transcript, error, muted, connect, disconnect, toggleMute],
+    [enabled, status, transcript, error, muted, connect, disconnect, toggleMute],
   );
 
   return (

@@ -62,13 +62,25 @@ const DOT: Record<Tone, string> = {
  * model, voice, and personality are configured by the owner from /admin.
  */
 export function BookClubLauncher() {
-  const { status, transcript, error, muted, connect, disconnect, toggleMute } =
-    useVoiceAgent();
+  const {
+    enabled,
+    status,
+    transcript,
+    error,
+    muted,
+    connect,
+    disconnect,
+    toggleMute,
+  } = useVoiceAgent();
   const [open, setOpen] = useState(false);
 
   const visual = mapStatus(status);
   const active = ACTIVE.includes(status);
   const lastLine = transcript.length ? transcript[transcript.length - 1] : null;
+
+  // Hidden until the server confirms the voice feature is configured (a Deepgram
+  // key is present), so visitors never hit a broken assistant.
+  if (!enabled) return null;
 
   // Collapsed: the floating avatar button.
   if (!open) {

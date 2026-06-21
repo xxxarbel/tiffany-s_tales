@@ -10,5 +10,12 @@ export const runtime = "nodejs";
 
 export async function GET() {
   const config = await getVoiceAgentConfig();
-  return Response.json({ config }, { headers: { "Cache-Control": "no-store" } });
+  // `enabled` lets the browser hide the launcher entirely when the server has no
+  // Deepgram key, so visitors never hit a broken assistant (a 500 from the token
+  // route). The key itself is never sent — only whether it's present.
+  const enabled = Boolean(process.env.DEEPGRAM_API_KEY);
+  return Response.json(
+    { config, enabled },
+    { headers: { "Cache-Control": "no-store" } },
+  );
 }
