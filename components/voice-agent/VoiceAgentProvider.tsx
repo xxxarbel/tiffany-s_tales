@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -184,6 +185,18 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
     setTranscript([]);
     void client.connect();
   }, [client]);
+
+  // Auto-start the guide once the server confirms it's configured, so visitors
+  // are greeted without having to press anything. It only fires once; visitors
+  // can silence it any time (mute the mic or End the chat). Note: browsers may
+  // hold playback/mic until the first interaction — the launcher stays available
+  // to start it manually if the autostart is blocked.
+  const autoStarted = useRef(false);
+  useEffect(() => {
+    if (!enabled || autoStarted.current) return;
+    autoStarted.current = true;
+    connect();
+  }, [enabled, connect]);
 
   const disconnect = useCallback(() => {
     clearHighlight();

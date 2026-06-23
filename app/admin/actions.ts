@@ -11,12 +11,14 @@ import {
   fetchGoodreadsRss,
   parseGoodreadsCsv,
   parseGoodreadsRss,
+  resolveCoverUrl,
   setGoodreadsUserId,
   upsertGoodreadsBooks,
 } from "@/lib/goodreads";
 import { isBeholdUrl, syncInstagramFeed } from "@/lib/instagram";
 import { setVoiceAgentConfig } from "@/lib/voice/agent-config";
 import { THINK_PROVIDERS, type AgentConfig } from "@/lib/voice-agent/settings";
+import { setBookOfMonth, type BookOfMonth } from "@/lib/book-of-the-month";
 
 export type SettingsState = { ok: boolean; error?: string } | null;
 
@@ -123,6 +125,67 @@ export async function saveVoiceConfigAction(
   } catch (error) {
     console.error("[admin] failed to save voice config:", error);
     return { ok: false, error: "Couldn't save the voice settings. Try again." };
+  }
+}
+
+/**
+ * Admin-only Server Action to save the curated Book of the Month shown on the
+ * public /book-of-the-month page. Re-checks admin (defense in depth). When the
+ * owner leaves the cover blank we resolve a real one from the title/author
+ * (Open Library → Google Books) so a referenced book always shows a picture.
+ */
+export async function saveBookOfMonthAction(
+  _prev: SettingsState,
+  formData: FormData
+): Promise<SettingsState> {
+  await requireAdmin();
+
+  const get = (k: string) => String(formData.get(k) ?? "").trim();
+
+  const title = get("title");
+  if (!title) return { ok: false, error: "Book title can't be empty." };
+
+  const author = get("author");
+  let coverUrl = get("coverUrl");
+
+  // Only resolve when the admin didn't paste a cover — a single book, so the
+  // external lookups are cheap (unlike the full-library import, §8f).
+  if (!coverUrl) {
+    try {
+      coverUrl =
+        (await resolveCoverUrl({
+          title,
+          author: author || null,
+          isbn: null,
+          isbn13: null,
+          coverUrl: null,
+        })) ?? "";
+    } catch (error) {
+      console.error("[admin] book-of-month cover resolve failed:", error);
+      coverUrl = "";
+    }
+  }
+
+  const book: BookOfMonth = {
+    published: get("published") === "true",
+    month: get("month"),
+    title,
+    author,
+    coverUrl,
+    description: get("description"),
+    whyPicked: get("whyPicked"),
+    meetingInfo: get("meetingInfo"),
+    purchaseUrl: get("purchaseUrl"),
+  };
+
+  try {
+    await setBookOfMonth(book);
+    revalidatePath("/admin");
+    revalidatePath("/book-of-the-month");
+    return { ok: true };
+  } catch (error) {
+    console.error("[admin] failed to save book of the month:", error);
+    return { ok: false, error: "Couldn't save the Book of the Month. Try again." };
   }
 }
 

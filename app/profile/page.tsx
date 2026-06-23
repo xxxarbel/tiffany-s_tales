@@ -6,6 +6,7 @@ import { ArrowLeft, CalendarDays, Mail, ShieldCheck } from "lucide-react";
 import { getSafeSession } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { account } from "@/lib/schema";
+import { getUserProfile } from "@/lib/user-profile";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,6 +19,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { SiteHeader } from "@/components/site-header";
 import { ProfileForm } from "@/components/auth/profile-form";
+import { ReadingProfileForm } from "@/components/auth/reading-profile-form";
 
 const providerLabels: Record<string, string> = {
   credential: "Email & password",
@@ -36,6 +38,9 @@ export default async function ProfilePage() {
     month: "long",
     year: "numeric",
   });
+
+  // The member's free-text reading profile (the "about you / your taste" answers).
+  const readingProfile = await getUserProfile(user.id);
 
   // Which sign-in methods are linked to this account (credential / google).
   let providers: string[] = [];
@@ -68,6 +73,9 @@ export default async function ProfilePage() {
           <ProfileForm
             user={{ name: user.name, email: user.email, image: user.image }}
           />
+
+          {/* About you & reading taste */}
+          <ReadingProfileForm profile={readingProfile} />
 
           {/* Account info (read-only) */}
           <Card>

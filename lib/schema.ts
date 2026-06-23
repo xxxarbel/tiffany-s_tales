@@ -171,6 +171,50 @@ export const instagramPost = pgTable(
   (table) => [index("instagram_post_posted_at_idx").on(table.postedAt)]
 );
 
+// Personal reading log — books a signed-in member has read anywhere, not only
+// Tiffany's Tales picks. Each member keeps their own private list; one row per
+// book with the title, author, and an optional 1–5 "paw" rating. Distinct from
+// `goodreadsBook` (owner-imported, public): this is per-member data keyed by
+// `userId` and cascades away if the account is removed.
+export const bookLog = pgTable(
+  "book_log",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    author: text("author"),
+    genre: text("genre"),
+    rating: integer("rating"), // 1–5 paws; null = unrated
+    createdAt: timestamp("created_at")
+      .$defaultFn(() => new Date())
+      .notNull(),
+    updatedAt: timestamp("updated_at")
+      .$defaultFn(() => new Date())
+      .notNull(),
+  },
+  (table) => [index("book_log_user_id_idx").on(table.userId)]
+);
+
+// A member's free-text reading profile — the answers to the "tell me about
+// yourself / your taste in books" prompts on /profile. One row per member
+// (PK = userId, 1:1 with `user`), so the agent and the club can get to know each
+// reader. All fields are optional. Cascades away with the account.
+export const userProfile = pgTable("user_profile", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => user.id, { onDelete: "cascade" }),
+  aboutYou: text("about_you"),
+  booksLike: text("books_like"),
+  dislikeInBooks: text("dislike_in_books"),
+  likeInBooks: text("like_in_books"),
+  preferredGenres: text("preferred_genres"),
+  updatedAt: timestamp("updated_at")
+    .$defaultFn(() => new Date())
+    .notNull(),
+});
+
 export const schema = {
   user,
   session,
@@ -180,4 +224,6 @@ export const schema = {
   pageview,
   goodreadsBook,
   instagramPost,
+  bookLog,
+  userProfile,
 };

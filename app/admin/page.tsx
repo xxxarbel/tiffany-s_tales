@@ -9,6 +9,7 @@ import { getAnalyticsSummary } from "@/lib/analytics";
 import { getAdminBooks, getGoodreadsUserId } from "@/lib/goodreads";
 import { getAdminPosts, getBeholdFeedUrl } from "@/lib/instagram";
 import { getVoiceAgentConfig } from "@/lib/voice/agent-config";
+import { getBookOfMonth } from "@/lib/book-of-the-month";
 import { SiteHeader } from "@/components/site-header";
 import { AdminPanel } from "@/components/admin/admin-panel";
 
@@ -59,6 +60,9 @@ export default async function AdminPage() {
   // The owner-editable voice assistant config (model, voice, prompt).
   const voiceConfig = await getVoiceAgentConfig();
 
+  // The curated Book of the Month shown on the public /book-of-the-month page.
+  const bookOfMonth = await getBookOfMonth();
+
   return (
     <div className="min-h-svh bg-muted/40">
       <SiteHeader />
@@ -84,6 +88,7 @@ export default async function AdminPage() {
             feedUrl: beholdFeedUrl,
           }}
           voiceConfig={voiceConfig}
+          bookOfMonth={bookOfMonth}
         />
       </main>
     </div>

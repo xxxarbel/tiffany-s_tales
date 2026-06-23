@@ -1,6 +1,6 @@
 "use client"
 
-import { Users, Mail, BarChart3, BookMarked, Sparkles, Mic } from "lucide-react"
+import { Users, Mail, BarChart3, BookMarked, BookOpen, Sparkles, Mic } from "lucide-react"
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import type { AppSettings } from "@/lib/settings"
@@ -8,6 +8,7 @@ import type { AnalyticsSummary } from "@/lib/analytics"
 import type { GoodreadsBookRow } from "@/lib/goodreads"
 import type { InstagramPostRow } from "@/lib/instagram"
 import type { AgentConfig } from "@/lib/voice-agent/settings"
+import type { BookOfMonth } from "@/lib/book-of-the-month"
 import { AdminUsersTable, type AdminUser } from "@/components/admin/admin-users-table"
 import { AdminSettingsForm } from "@/components/admin/admin-settings-form"
 import { AdminAnalytics } from "@/components/admin/admin-analytics"
@@ -15,6 +16,7 @@ import { AdminGoodreads } from "@/components/admin/admin-goodreads"
 import { AdminInstagram } from "@/components/admin/admin-instagram"
 import { AdminKnowledge } from "@/components/admin/admin-knowledge"
 import { AdminVoice } from "@/components/admin/admin-voice"
+import { AdminBookOfMonth } from "@/components/admin/admin-book-of-month"
 import { InstagramIcon } from "@/components/icons/instagram-icon"
 
 export function AdminPanel({
@@ -26,6 +28,7 @@ export function AdminPanel({
   goodreads,
   instagram,
   voiceConfig,
+  bookOfMonth,
 }: {
   users: AdminUser[]
   providersByUser: Record<string, string[]>
@@ -39,6 +42,7 @@ export function AdminPanel({
     feedUrl: string | null
   }
   voiceConfig: AgentConfig
+  bookOfMonth: BookOfMonth
 }) {
   return (
     <Tabs defaultValue="users" className="w-full">
@@ -57,6 +61,10 @@ export function AdminPanel({
         <TabsTrigger value="goodreads">
           <BookMarked data-icon="inline-start" />
           Goodreads
+        </TabsTrigger>
+        <TabsTrigger value="book-of-month">
+          <BookOpen data-icon="inline-start" />
+          Book of the Month
         </TabsTrigger>
         <TabsTrigger value="instagram">
           <InstagramIcon className="size-4" data-icon="inline-start" />
@@ -91,6 +99,9 @@ export function AdminPanel({
           total={goodreads.total}
           userId={goodreads.userId}
         />
+      </TabsContent>
+      <TabsContent value="book-of-month" className="pt-6">
+        <AdminBookOfMonth book={bookOfMonth} />
       </TabsContent>
       <TabsContent value="instagram" className="pt-6">
         <AdminInstagram

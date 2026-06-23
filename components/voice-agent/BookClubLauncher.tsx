@@ -6,7 +6,17 @@ import { Mic, MicOff, PawPrint, X } from "lucide-react";
 import type { VoiceAgentStatus } from "@/lib/voice-agent/types";
 import { useVoiceAgent } from "./VoiceAgentProvider";
 
-const AVATAR_SRC = "/images/voice-assistant.png";
+const AVATAR_IDLE = "/images/voice-assistant.png";
+// Tiff with her ears perked up while she's listening, and ears relaxed while
+// she's speaking — so visitors can see at a glance whose turn it is.
+const AVATAR_LISTENING = "/images/tiff-listening.png";
+const AVATAR_SPEAKING = "/images/tiff-speaking.png";
+
+function avatarFor(status: VoiceAgentStatus): string {
+  if (status === "listening") return AVATAR_LISTENING;
+  if (status === "speaking") return AVATAR_SPEAKING;
+  return AVATAR_IDLE;
+}
 
 const ACTIVE: VoiceAgentStatus[] = [
   "requesting-mic",
@@ -75,6 +85,7 @@ export function BookClubLauncher() {
   const [open, setOpen] = useState(false);
 
   const visual = mapStatus(status);
+  const avatarSrc = avatarFor(status);
   const active = ACTIVE.includes(status);
   const lastLine = transcript.length ? transcript[transcript.length - 1] : null;
 
@@ -96,7 +107,7 @@ export function BookClubLauncher() {
           <span className="absolute inset-0 animate-ping rounded-full bg-sage/40" />
         )}
         <Image
-          src={AVATAR_SRC}
+          src={avatarSrc}
           alt="Tiff, the Tiffany's Tales guide"
           fill
           sizes="56px"
@@ -118,7 +129,7 @@ export function BookClubLauncher() {
         <div className="flex items-center gap-2.5">
           <span className="relative size-9 overflow-hidden rounded-full ring-2 ring-cream/40">
             <Image
-              src={AVATAR_SRC}
+              src={avatarSrc}
               alt="Tiff, the Tiffany's Tales guide"
               fill
               sizes="36px"

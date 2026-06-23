@@ -4,6 +4,7 @@ import { useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
+  BookHeart,
   LayoutDashboard,
   Menu,
   ShieldCheck,
@@ -32,6 +33,7 @@ const navLinks = [
   { label: "About", href: "/about" },
   { label: "Book Club Benefits", href: "/benefits" },
   { label: "Book Reviews", href: "/reviews" },
+  { label: "Book of the Month", href: "/book-of-the-month" },
   { label: "Good Reads", href: "/goodreads" },
   { label: "Instagram", href: "/instagram" },
   { label: "Contact", href: "/contact" },
@@ -39,6 +41,7 @@ const navLinks = [
 
 const accountLinks = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+  { label: "Log a Book", href: "/log-a-book", icon: BookHeart },
   { label: "Profile", href: "/profile", icon: UserRound },
 ]
 
