@@ -12,6 +12,7 @@
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
     "db:seed-admin": "node --env-file=.env scripts/seed-admin.mjs",
+    "db:member": "node --env-file=.env scripts/member-tables-setup.mjs",
     "voice:db": "node --env-file=.env scripts/voice-db-setup.mjs",
     "voice:ingest": "node --env-file=.env scripts/ingest-knowledge.mjs"
   },
