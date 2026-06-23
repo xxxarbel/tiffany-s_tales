@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 
+import { getAnthropicApiKey } from "@/lib/anthropic";
 import { getUserProfile } from "@/lib/user-profile";
 import { getBookLog } from "@/lib/book-log";
 import { resolveCoverUrl } from "@/lib/goodreads";
@@ -179,7 +180,9 @@ export async function generateSuggestions(userId: string): Promise<Suggestion[]>
     getBookLog(userId),
   ]);
 
-  const client = new Anthropic();
+  // Pass the key explicitly so it works under either env-var name
+  // (ANTHROPIC_API_KEY or CLAUDE_API_KEY), not just the SDK's default.
+  const client = new Anthropic({ apiKey: getAnthropicApiKey() });
   const userMessage = buildUserMessage(profile, log);
 
   const tools: Anthropic.Messages.ToolUnion[] = [

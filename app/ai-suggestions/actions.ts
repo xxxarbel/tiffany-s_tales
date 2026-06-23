@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 
 import { getSafeSession } from "@/lib/auth";
+import { getAnthropicApiKey } from "@/lib/anthropic";
 import { setAiSuggestions } from "@/lib/ai-suggestions";
 import { generateSuggestions } from "@/lib/ai-suggestions-generate";
 
@@ -25,7 +26,7 @@ export async function generateSuggestionsAction(): Promise<SuggestState> {
   if (!session) {
     return { ok: false, error: "Please sign in to get suggestions." };
   }
-  if (!process.env.ANTHROPIC_API_KEY) {
+  if (!getAnthropicApiKey()) {
     return {
       ok: false,
       error: "AI suggestions aren't available right now. Please try again later.",

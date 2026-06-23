@@ -882,7 +882,8 @@ Variables (Production)**:
   — `/api/voice/config` returns `enabled:false`); the launcher stays hidden until it's added (Production
   + Preview) and the project redeployed. Also run `voice:db` against the Neon URL once so the
   `documents`/`chunks` tables exist there (not yet done).
-- **`ANTHROPIC_API_KEY`** → enables the **Tiffany AI Suggestions** tab (§8l). Hidden until set
+- **`ANTHROPIC_API_KEY`** (or **`CLAUDE_API_KEY`** — the code accepts either via
+  `lib/anthropic.ts`) → enables the **Tiffany AI Suggestions** tab (§8l). Hidden until set
   (`/api/ai-suggestions/config` returns `enabled:false`). Server-only; never `NEXT_PUBLIC_`.
 - **`CRON_SECRET`** → any random string; enables **both** daily crons
   (`/api/cron/instagram-sync` and `/api/cron/goodreads-covers`). Vercel Cron sends it as
