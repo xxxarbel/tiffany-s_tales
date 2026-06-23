@@ -23,15 +23,15 @@
   Vercel** (`/api/voice/config` returns `enabled:false` and the token route 500s) — verified missing;
   the local key works. The live mic↔WebSocket path still hasn't been exercised headlessly (needs a
   browser + microphone).
-- **Code state:** `HEAD` = `c02f9cc` on `main` — **committed locally but NOT yet pushed/deployed**
-  (the last pushed commit is `57c504a`). `origin/main` (deployed to Vercel) has the **Goodreads
-  import**, the **Instagram import** (@tiffanystales via Behold.so) with **daily sync** (Vercel
-  Cron), **reliable multi-source book covers**, the **decoupled Goodreads cover backfill**, the
-  **Instagram feed-id fix**, and the **Deepgram voice assistant** (`b634ad2` + `57c504a`). The local
-  `c02f9cc` checkpoint adds the **Book of the Month**, the **Log a Book** reading log, **member
-  reading profiles**, and the **voice auto-start + listening/speaking avatars** (see the new bullet
-  below) — `git push` to deploy.
-- 🆕 **Newest work (local `c02f9cc`, members + content):**
+- **Code state:** `HEAD` = `origin/main` = `da53964` — **pushed and deploying to Vercel**. `origin`
+  has the **Goodreads import**, the **Instagram import** (@tiffanystales via Behold.so) with **daily
+  sync** (Vercel Cron), **reliable multi-source book covers**, the **decoupled Goodreads cover
+  backfill**, the **Instagram feed-id fix**, the **Deepgram voice assistant** (`b634ad2` + `57c504a`),
+  and — newest — the **Book of the Month**, the **Log a Book** reading log, **member reading
+  profiles**, and **voice auto-start + listening/speaking avatars** (`c02f9cc`), plus their
+  **versioned migrations** (`da53964`). ⚠️ The features only render in prod once the Vercel build
+  finishes **and** `DEEPGRAM_API_KEY` is set (voice, §8h).
+- 🆕 **Newest work (`c02f9cc` + `da53964`, members + content):**
   - **Book of the Month** — an owner-curated featured book on a new public page **`/book-of-the-month`**
     (nav tab) and a new **/admin → Book of the Month** tab. Stored as one JSON blob in `app_settings`
     (key `book_of_the_month`); covers auto-resolve when the admin leaves the URL blank. See **§8i**.
@@ -49,10 +49,10 @@
 - ✅ **`book_log` + `user_profile` are now on Neon too.** Both member tables (§8j/§8k) are applied to
   **both local Docker and Neon** via the idempotent runner **`npm run db:member`**
   (`scripts/member-tables-setup.mjs`), and versioned in **`drizzle/0003_member_book_log_and_profile.sql`**
-  (reference-only, like `0002`). ⚠️ But the **code** for those pages is in local commit `c02f9cc`
-  which is **not pushed/deployed yet** — the live site won't show `/log-a-book` or the profile
-  reading fields until `git push`. Also still pending: **`DEEPGRAM_API_KEY` in Vercel** (voice, §8h)
-  and the voice **`documents`/`chunks` tables on Neon** (`voice:db`).
+  (reference-only, like `0002`). The **code** for those pages shipped in `c02f9cc`/`da53964`
+  (**pushed**), so once the Vercel build finishes `/log-a-book` and the profile reading fields work in
+  prod against Neon. Also still pending: **`DEEPGRAM_API_KEY` in Vercel** (voice, §8h) and the voice
+  **`documents`/`chunks` tables on Neon** (`voice:db`).
 - ⚠️ **Set `CRON_SECRET` in Vercel** to enable the two daily crons — **`/api/cron/instagram-sync`**
   (06:00 UTC) and **`/api/cron/goodreads-covers`** (06:30 UTC). Both require it and return **401**
   until it's set (so they no-op). See §8g / §8f / §9.
@@ -241,14 +241,18 @@ public page (§8h). Clicking a nav tab navigates to a real page (no more scroll-
   badge, member since, linked sign-in providers).
 - **`/log-a-book`** — protected: a member's private **reading log** (add title/author/genre + a 1–5
   paw rating; inline re-rate / delete). Shown in the header only when signed in. §8j.
+- **`/ai-suggestions`** — protected: **Tiffany AI Suggestions** — 3–5 AI book picks (claude-haiku-4-5
+  + web search) from the member's profile + log, each with a substantiation + a real cover. Tab hidden
+  unless `ANTHROPIC_API_KEY` is set. §8l.
 - **`/admin`** — owner-only (see §8a).
 
 **Header nav** (`components/site-header.tsx`, client, route-based active state via `usePathname`):
 - Always: Home · About · Book Club Benefits · Book Reviews · **Book of the Month** · **Good Reads** ·
   **Instagram** · Contact (one `navLinks` array drives both the desktop tabs and the mobile `Sheet`).
-- When signed in: **Dashboard · Log a Book · Profile** (and **Admin** when `role === "admin"`) — the
-  `accountLinks` array — plus the avatar `UserMenu`. Logged out: Log in / Join my pack. Mobile =
-  `Sheet` with the same links.
+- When signed in: **Dashboard · Log a Book · Profile** (and **Admin** when `role === "admin"`, and
+  **Tiffany AI Suggestions** when `ANTHROPIC_API_KEY` is set — fetched from `/api/ai-suggestions/config`
+  on mount, §8l) — the `sessionLinks` array — plus the avatar `UserMenu`. Logged out: Log in / Join my
+  pack. Mobile = `Sheet` with the same links.
 
 ---
 
@@ -276,6 +280,8 @@ app/
   profile/actions.ts                # "use server" saveReadingProfileAction -> setUserProfile (§8k)
   log-a-book/page.tsx               # /log-a-book — protected; member reading log (DB: getBookLog) §8j
   log-a-book/actions.ts             # "use server" add/updateRating/delete book-log actions (§8j)
+  ai-suggestions/page.tsx           # /ai-suggestions — protected; AI book picks (DB: getAiSuggestions) §8l
+  ai-suggestions/actions.ts         # "use server" generateSuggestionsAction -> generate + setAiSuggestions (§8l)
   admin/page.tsx                    # /admin — requireAdmin(); users + analytics + goodreads + book-of-month + instagram + voice + knowledge + email
   admin/actions.ts                  # "use server" admin actions: settings + voice + Book of the Month (§8i) + Goodreads (§8f) + Instagram (§8g)
   api/auth/[...all]/route.ts        # Better Auth handler (serves /api/auth/* incl. /admin/*)
@@ -287,6 +293,7 @@ app/
   api/documents/route.ts            # POST/GET/DELETE knowledge docs (admin-gated 401; mammoth/pdf-parse) (§8h)
   api/voice/books/route.ts          # GET search_books / book_of_the_month over live Goodreads shelves (§8h)
   api/voice/config/route.ts         # GET owner-edited voice config (model/voice/prompt) for the browser (§8h)
+  api/ai-suggestions/config/route.ts # GET { enabled } — is ANTHROPIC_API_KEY set; gates the nav tab (§8l)
 components/
   site-header.tsx                   # sticky header: route tabs (incl. Good Reads, Instagram) + auth + Sheet (client)
   site-footer.tsx                   # deep-plum footer (logo, explore links, Instagram via shared icon)
@@ -300,6 +307,8 @@ components/
     BookClubLauncher.tsx            #   floating Tiff-avatar launcher: mic state, Start/End, mute; avatar swaps listening/speaking (client)
   book-log/
     book-log.tsx                    # member reading log: add form + paw rating + list (add/rate/delete) (§8j) (client)
+  ai-suggestions/
+    ai-suggestions.tsx              # AI picks: Get suggestions/Refresh + cards (cover + reason) (§8l) (client)
   icons/
     instagram-icon.tsx              # shared inline Instagram SVG (lucide lacks it) — footer/nav/admin/cards
   admin/
@@ -338,7 +347,9 @@ lib/
   book-of-the-month.ts              # get/setBookOfMonth over app_settings (key book_of_the_month) (§8i)
   book-log.ts                       # per-member reading log get/add/setRating/delete (book_log, userId-scoped) (§8j)
   user-profile.ts                   # get/setUserProfile reading-taste fields (user_profile, 1:1 user) (§8k)
-  schema.ts                         # auth tables + admin cols + app_settings + pageview + goodreads_book + instagram_post + book_log + user_profile
+  ai-suggestions.ts                 # get/setAiSuggestions latest picks (ai_suggestions, 1:1 user, JSON-as-text) (§8l)
+  ai-suggestions-generate.ts        # generateSuggestions: claude-haiku-4-5 + web search -> picks + covers (§8l)
+  schema.ts                         # auth tables + admin cols + app_settings + pageview + goodreads_book + instagram_post + book_log + user_profile + ai_suggestions
                                     #   (NB: voice documents/chunks are NOT here — raw SQL only, §8h)
   voice-agent/                      # framework-agnostic voice client (React-/Node-free) (§8h)
     settings.ts                     #   SYSTEM_PROMPT (site expert) + AGENT_FUNCTIONS + DEFAULT_AGENT_CONFIG + buildSettings()
@@ -353,7 +364,7 @@ lib/
 documents/                          # seed knowledge docs (about/membership/packs/book-of-month/benefits/faq) (§8h)
 scripts/
   seed-admin.mjs                    # promote an existing owner row to admin (npm run db:seed-admin)
-  member-tables-setup.mjs           # create book_log + user_profile tables — npm run db:member (§8j/§8k)
+  member-tables-setup.mjs           # create book_log + user_profile + ai_suggestions tables — npm run db:member (§8j/§8k/§8l)
   voice-db-setup.mjs                # create documents+chunks tables (FTS, no pgvector) — npm run voice:db (§8h)
   ingest-knowledge.mjs              # ingest documents/*.md into the store — npm run voice:ingest (§8h)
 drizzle/
@@ -361,6 +372,7 @@ drizzle/
   0001_tough_firedrake.sql          # admin columns + app_settings
   0002_voice_knowledge.sql          # voice documents/chunks DDL — REFERENCE ONLY (applied by voice-db-setup, §8h)
   0003_member_book_log_and_profile.sql # book_log + user_profile DDL — REFERENCE ONLY (applied by member-tables-setup, §8j/§8k)
+  0004_ai_suggestions.sql           # ai_suggestions DDL — REFERENCE ONLY (applied by member-tables-setup, §8l)
   meta/                             # drizzle-kit journal + snapshots
 public/  logo.jpg, images/          # brand logo (don't replace) + section photos + Tiff avatars: voice-assistant.png (idle),
                                     #   tiff-listening.png (ears-up, listening), tiff-speaking.png (ears-down, speaking) (§8h)
@@ -783,6 +795,35 @@ drizzle.config.ts  components.json  .env / .env.example  vercel.json (two Vercel
   `user_profile` table — created via **`npm run db:member`**; now on **both local Docker and Neon**
   (§8c/§10).
 
+### 8l. Tiffany AI Suggestions (`/ai-suggestions`)
+- **What it is:** a protected, **signed-in-only** tab at **`/ai-suggestions`** where Tiffany's
+  concierge reads the member's **reading profile** (§8k) and **rated reading log** (§8j), infers their
+  tastes, **web-searches goodreads.com / amazon.com**, and returns **3–5 picks, each with a
+  substantiation** that cites the member's own stated tastes and ratings. Each pick shows a **real
+  fetched cover** (`<BookCover>`, §8f) — the always-show-a-cover rule. **Get suggestions / Refresh**
+  generate on demand; the latest set **persists** and shows instantly on return visits.
+- **Gating:** the whole tab is **hidden when `ANTHROPIC_API_KEY` is unset**, mirroring the
+  `DEEPGRAM_API_KEY` → voice pattern. `app/api/ai-suggestions/config/route.ts` (`force-dynamic`,
+  `runtime=nodejs`, `no-store`) returns only `{ enabled }`; `site-header.tsx` fetches it on mount and
+  appends the tab to `sessionLinks` only when `session && enabled`. The route is also
+  `getSafeSession`-guarded, so hitting it logged-out redirects to `/login` and the in-page state reads
+  "not available yet" when unconfigured.
+- **Model/API:** `claude-haiku-4-5` (cheapest tier) via `@anthropic-ai/sdk`, with the **basic**
+  `web_search_20250305` server tool (the dynamic-filtering `web_search_20260209` needs Opus/Sonnet
+  4.6+), **structured outputs** (`output_config.format`), and **no** `effort`/`thinking` (both error /
+  don't apply on Haiku 4.5). The server-tool `pause_turn` loop is resumed by re-sending
+  `[user, assistant(response.content)]` (cap ~5); a JSON-only fallback covers the case where web
+  search + structured output reject together. Covers resolve via `resolveCoverUrl` (§8f) with bounded
+  concurrency. **`lib/ai-suggestions-generate.ts`** (`generateSuggestions`) builds the prompt + runs
+  the model; **`lib/ai-suggestions.ts`** (`getAiSuggestions` / `setAiSuggestions`) reads/upserts.
+- **Table `ai_suggestions`** (§8c, 1:1 with `user`, PK = `user_id`): `suggestions` (JSON-encoded
+  `Suggestion[]` in a **text** column — this schema has no jsonb), `model`, `generated_at`. Created via
+  **`npm run db:member`**; versioned in **`drizzle/0004_ai_suggestions.sql`** (reference-only).
+- **Server action** (`app/ai-suggestions/actions.ts` → `generateSuggestionsAction`): re-checks the
+  session and the `ANTHROPIC_API_KEY`, generates + `setAiSuggestions(user.id, …)`,
+  `revalidatePath("/ai-suggestions")`. Page sets `export const maxDuration = 60` (web search + model
+  can take 15–40s). UI: `components/ai-suggestions/ai-suggestions.tsx` (client, `useTransition`).
+
 ### Google OAuth (`.design/.specs/better_auth.md`)
 - Config in `lib/auth.ts` `socialProviders.google` (`prompt: "select_account"`), guarded by
   `isGoogleEnabled` (both `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` set). UI:
@@ -818,6 +859,7 @@ ADMIN_EMAIL=arbeling@gmail.com                 # grants admin role + default adm
 # CONTACT_EMAIL=…                              # optional contact recipient (defaults to ADMIN_EMAIL)
 # CRON_SECRET=<random>                         # guards the /api/cron/* jobs; primarily set in Vercel for prod
 DEEPGRAM_API_KEY=<dg_…>                        # voice assistant (§8h); server-only, never NEXT_PUBLIC_
+ANTHROPIC_API_KEY=<sk-ant-…>                    # Tiffany AI Suggestions (§8l); server-only — tab hidden until set
 ```
 
 - **Which DB is live is decided here.** Currently **local Docker**. To dev against Neon, flip the
@@ -840,6 +882,8 @@ Variables (Production)**:
   — `/api/voice/config` returns `enabled:false`); the launcher stays hidden until it's added (Production
   + Preview) and the project redeployed. Also run `voice:db` against the Neon URL once so the
   `documents`/`chunks` tables exist there (not yet done).
+- **`ANTHROPIC_API_KEY`** → enables the **Tiffany AI Suggestions** tab (§8l). Hidden until set
+  (`/api/ai-suggestions/config` returns `enabled:false`). Server-only; never `NEXT_PUBLIC_`.
 - **`CRON_SECRET`** → any random string; enables **both** daily crons
   (`/api/cron/instagram-sync` and `/api/cron/goodreads-covers`). Vercel Cron sends it as
   `Authorization: Bearer <CRON_SECRET>`; without it the routes return 401 (the crons effectively
@@ -896,8 +940,9 @@ For Neon, query with any pg client using the Neon `DATABASE_URL`.
    **`voice:ingest`** to seed the docs (§8h).
    - To target Neon from a local shell: either temporarily point `.env` `DATABASE_URL` at Neon and
      `npm run db:member`, or `DATABASE_URL="<neon-url>" node scripts/member-tables-setup.mjs`.
-3. `git push origin main` → Vercel auto-builds & deploys (and registers `vercel.json` crons). ⚠️
-   `HEAD` (`c02f9cc`) is **not pushed yet** — the new member features go live only after this push.
+3. `git push origin main` → Vercel auto-builds & deploys (and registers `vercel.json` crons). ✅
+   Done — `HEAD` (`da53964`) is pushed; the new member features go live when the build finishes (the
+   voice agent additionally needs `DEEPGRAM_API_KEY`, §8h).
 
 ---
 
@@ -969,10 +1014,10 @@ Cron + pre-wired default feed + dashboard-URL hardening) plus **applying all new
 populating the Instagram feed** (through `9741a5f`); and most recently the **decoupled Goodreads
 cover backfill** (CSV import no longer times out in prod + daily cover cron) and the **Instagram
 feed-id fix** (widget id → feed id) — deployed through `daf0037`; then the **Deepgram voice
-assistant** (`b634ad2` + launcher-hidden-without-key `57c504a`, deployed); and — newest, **committed
-locally as `c02f9cc` but NOT pushed** — the **Book of the Month** (§8i), the **Log a Book** reading
-log (§8j), **member reading profiles** (§8k), and **voice auto-start + listening/speaking avatars**
-(§8h) (§0, §14).
+assistant** (`b634ad2` + launcher-hidden-without-key `57c504a`, deployed); and — newest, **pushed**
+at `c02f9cc`/`da53964` — the **Book of the Month** (§8i), the **Log a Book** reading log (§8j),
+**member reading profiles** (§8k), **voice auto-start + listening/speaking avatars** (§8h), and the
+**versioned `book_log`/`user_profile` migrations applied to Neon** (§8c/§10) (§0, §14).
 
 - [x] ~~Apply `pageview` + `goodreads_book` + `instagram_post` to Neon~~ — **done**: `db:push`
       against the Neon URL (8 tables verified) + populated (~1031 books, 7 IG posts). (§8c)
@@ -982,9 +1027,8 @@ log (§8j), **member reading profiles** (§8k), and **voice auto-start + listeni
       resolution; daily `/api/cron/goodreads-covers` backfill added. (§8f)
 - [x] ~~Apply `book_log` + `user_profile` to Neon~~ — **done**: `npm run db:member` run against the
       Neon URL (both tables verified); versioned in `drizzle/0003_member_book_log_and_profile.sql`. (§8c/§10)
-- [ ] **Push `c02f9cc` to deploy (§10):** `git push origin main` so the Book of the Month / Log a Book /
-      reading profiles / voice auto-start go live. Neon already has the tables; the code just needs
-      deploying. (Also commit the new `0003` SQL + `db:member` runner.)
+- [x] ~~Push `c02f9cc` to deploy~~ — **done**: `c02f9cc` (features) + `da53964` (migrations) pushed to
+      `origin/main`; Vercel auto-deploys. Neon already has the tables. (§10)
 - [ ] **Voice assistant → prod (§8h):** add `DEEPGRAM_API_KEY` to Vercel (verified missing →
       launcher hidden), run `voice:db` + `voice:ingest` against the Neon URL (tables not there yet),
       and smoke-test the live mic↔WebSocket conversation in a browser (untested headlessly).
@@ -1023,14 +1067,15 @@ log (§8j), **member reading profiles** (§8k), and **voice auto-start + listeni
   daily cover cron** (`fd0863b`) → **Instagram feed-id fix (widget id → feed id)** (`daf0037`) →
   **Deepgram voice assistant + admin control** (`b634ad2`) → **hide voice launcher when
   `DEEPGRAM_API_KEY` unset** (`57c504a`) → **Book of the Month + Log a Book + reading profiles +
-  voice auto-start/avatars** (`c02f9cc`, **local-only, not pushed**).
-- **State now:** `HEAD` = `c02f9cc`, **one commit ahead of `origin/main` (`57c504a`) — NOT yet
-  pushed/deployed**; working tree clean apart from this DESIGN.md edit. `origin` (live on Vercel) has
-  everything through the voice assistant. Neon has the auth/analytics/Goodreads/Instagram tables, the
-  full Goodreads library (~1031 books, covers backfilled), the Instagram feed (7 posts), and **now
-  `book_log` + `user_profile`** (applied via `npm run db:member`, §8c/§10). Still pending: pushing
-  `c02f9cc` so those member features deploy, and `DEEPGRAM_API_KEY` in Vercel (§8h). ⚠️ The new
-  `0003` migration SQL + `db:member` runner are **uncommitted** working-tree changes. The
+  voice auto-start/avatars** (`c02f9cc`) → **versioned `book_log`/`user_profile` migrations +
+  `db:member` runner** (`da53964`).
+- **State now:** `HEAD` = `origin/main` = `da53964`, **pushed; Vercel auto-deploying**; working tree
+  clean apart from this DESIGN.md edit. `origin` (live on Vercel) now has everything including the
+  Book of the Month, Log a Book, reading profiles, and voice auto-start/avatars. Neon has the
+  auth/analytics/Goodreads/Instagram tables, the full Goodreads library (~1031 books, covers
+  backfilled), the Instagram feed (7 posts), and `book_log` + `user_profile` (applied via
+  `npm run db:member`, §8c/§10). Still pending: **`DEEPGRAM_API_KEY` in Vercel** so the voice agent
+  un-hides in prod (§8h), and rotating the API keys pasted in plaintext during this session. The
   `9ab830c` checkpoint bundled
   the Goodreads import, the Instagram import, and the multi-source cover work in one commit (it also
   included `goodreads_library_export-DESKTOP-0FJ40LV.csv` and `goodreads_library_export (1).csv` —

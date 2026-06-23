@@ -1,5 +1,5 @@
-// Creates the member-owned tables (book_log + user_profile) in the existing
-// Tiffany's Tales Postgres database.
+// Creates the member-owned tables (book_log + user_profile + ai_suggestions) in
+// the existing Tiffany's Tales Postgres database.
 //
 // Usage (loads DATABASE_URL from .env):
 //   npm run db:member
@@ -14,8 +14,9 @@
 // `db:push` now prompts interactively while the voice documents/chunks tables
 // aren't in the schema. Mirrors scripts/voice-db-setup.mjs.
 //
-// Keep the SQL below in sync with drizzle/0003_member_book_log_and_profile.sql
-// and the bookLog / userProfile definitions in lib/schema.ts.
+// Keep the SQL below in sync with drizzle/0003_member_book_log_and_profile.sql,
+// drizzle/0004_ai_suggestions.sql, and the bookLog / userProfile / aiSuggestions
+// definitions in lib/schema.ts.
 
 import { Pool } from "pg";
 
@@ -50,13 +51,25 @@ CREATE TABLE IF NOT EXISTS user_profile (
   preferred_genres  text,
   updated_at        timestamp NOT NULL DEFAULT now()
 );
+
+-- Latest AI book suggestions per member (§8l): the picks Tiffany's concierge
+-- generated from the member's profile + log, stored as JSON in a text column.
+-- 1:1 with user (PK = FK user_id). Read/written by lib/ai-suggestions.ts.
+CREATE TABLE IF NOT EXISTS ai_suggestions (
+  user_id       text PRIMARY KEY REFERENCES "user"(id) ON DELETE CASCADE,
+  suggestions   text,                                   -- JSON-encoded Suggestion[]
+  model         text,
+  generated_at  timestamp NOT NULL DEFAULT now()
+);
 `;
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
 try {
   await pool.query(SQL);
-  console.log("[db:member] book_log + user_profile tables are ready.");
+  console.log(
+    "[db:member] book_log + user_profile + ai_suggestions tables are ready."
+  );
 } catch (error) {
   console.error("[db:member] failed:", error);
   process.exitCode = 1;
