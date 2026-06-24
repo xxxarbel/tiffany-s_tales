@@ -14,7 +14,10 @@ export const metadata = {
 
 export default async function BookOfMonthPage() {
   const pick = await getBookOfMonth();
-  const hasPick = pick.published && pick.title.trim().length > 0;
+  // Show the book as soon as a title has been entered in the admin — every
+  // other field renders only when filled, so a partly-completed pick still
+  // displays cleanly.
+  const hasPick = pick.title.trim().length > 0;
 
   if (!hasPick) {
     return (

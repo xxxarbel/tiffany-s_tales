@@ -9,6 +9,8 @@ import {
   type SettingsState,
 } from "@/app/admin/actions";
 import {
+  AVATAR_SCALE_MAX,
+  AVATAR_SCALE_MIN,
   DEFAULT_AGENT_CONFIG,
   defaultModelFor,
   LANGUAGES,
@@ -198,6 +200,44 @@ export function AdminVoice({ config }: { config: AgentConfig }) {
                 </FieldDescription>
               </Field>
             </div>
+
+            {/* Avatar size — controls the floating launcher on the live site. */}
+            <Field>
+              <FieldLabel htmlFor="avatarScale">
+                Avatar size · {draft.avatarScale.toFixed(1)}×
+              </FieldLabel>
+              <div className="flex items-center gap-4">
+                <div className="flex size-48 shrink-0 items-center justify-center rounded-lg border bg-muted/40">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src="/images/voice-assistant.png"
+                    alt="Floating avatar size preview"
+                    style={{
+                      width: 56 * draft.avatarScale,
+                      height: 56 * draft.avatarScale,
+                    }}
+                    className="shrink-0 object-contain drop-shadow-[0_3px_5px_rgba(0,0,0,0.35)] transition-all"
+                  />
+                </div>
+                <div className="flex-1">
+                  <input
+                    id="avatarScale"
+                    name="avatarScale"
+                    type="range"
+                    min={AVATAR_SCALE_MIN}
+                    max={AVATAR_SCALE_MAX}
+                    step={0.1}
+                    value={draft.avatarScale}
+                    onChange={(e) => set("avatarScale", Number(e.target.value))}
+                    className="w-full accent-primary"
+                  />
+                  <FieldDescription className="mt-2">
+                    Sets how big Tiff&apos;s floating avatar appears on the site.
+                    Visitors can also drag her anywhere on the screen.
+                  </FieldDescription>
+                </div>
+              </div>
+            </Field>
 
             {/* Speech model */}
             <Field>

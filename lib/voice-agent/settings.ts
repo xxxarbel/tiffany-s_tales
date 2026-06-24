@@ -193,6 +193,9 @@ export interface AgentConfig {
   greeting: string;
   /** System prompt / instructions. */
   prompt: string;
+  /** Size multiplier for the floating avatar launcher (0.5–2). UI-only — not
+   *  part of the Deepgram Settings handshake. */
+  avatarScale: number;
 }
 
 export const DEFAULT_AGENT_CONFIG: AgentConfig = {
@@ -207,7 +210,12 @@ export const DEFAULT_AGENT_CONFIG: AgentConfig = {
   language: "en",
   greeting: DEFAULT_GREETING,
   prompt: SYSTEM_PROMPT,
+  avatarScale: 1,
 };
+
+/** Allowed range for the floating-avatar size multiplier. */
+export const AVATAR_SCALE_MIN = 0.5;
+export const AVATAR_SCALE_MAX = 3;
 
 // ---- Option lists for the settings UI ----
 

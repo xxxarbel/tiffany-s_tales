@@ -35,6 +35,8 @@ interface VoiceAgentContextValue {
   transcript: TranscriptEntry[];
   error: string | null;
   muted: boolean;
+  /** Owner-set size multiplier for the floating avatar (from /admin). */
+  avatarScale: number;
   connect: () => void;
   disconnect: () => void;
   toggleMute: () => void;
@@ -146,6 +148,9 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [muted, setMuted] = useState(false);
   const [enabled, setEnabled] = useState(false);
+  const [avatarScale, setAvatarScale] = useState(
+    DEFAULT_AGENT_CONFIG.avatarScale,
+  );
 
   const [client] = useState(() =>
     createClient(router, {
@@ -167,7 +172,11 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
         const data = await res.json();
         if (!active) return;
         if (data?.config) {
-          client.setConfig({ ...DEFAULT_AGENT_CONFIG, ...data.config });
+          const merged = { ...DEFAULT_AGENT_CONFIG, ...data.config };
+          client.setConfig(merged);
+          if (typeof merged.avatarScale === "number") {
+            setAvatarScale(merged.avatarScale);
+          }
         }
         // Only reveal the launcher when the server actually has a Deepgram key.
         if (data?.enabled) setEnabled(true);
@@ -226,11 +235,22 @@ export function VoiceAgentProvider({ children }: { children: ReactNode }) {
       transcript,
       error,
       muted,
+      avatarScale,
       connect,
       disconnect,
       toggleMute,
     }),
-    [enabled, status, transcript, error, muted, connect, disconnect, toggleMute],
+    [
+      enabled,
+      status,
+      transcript,
+      error,
+      muted,
+      avatarScale,
+      connect,
+      disconnect,
+      toggleMute,
+    ],
   );
 
   return (

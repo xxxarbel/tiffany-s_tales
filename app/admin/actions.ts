@@ -116,6 +116,7 @@ export async function saveVoiceConfigAction(
     language: get("language") || "en",
     greeting,
     prompt,
+    avatarScale: num("avatarScale", 0.5, 3, 1),
   };
 
   try {
@@ -182,6 +183,7 @@ export async function saveBookOfMonthAction(
     await setBookOfMonth(book);
     revalidatePath("/admin");
     revalidatePath("/book-of-the-month");
+    revalidatePath("/"); // the homepage now features the current pick too
     return { ok: true };
   } catch (error) {
     console.error("[admin] failed to save book of the month:", error);

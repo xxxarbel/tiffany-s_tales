@@ -81,58 +81,58 @@ export default function AboutPage() {
 
       {/* Meet the founder */}
       <section className="bg-muted/50 py-20">
-        <div className="mx-auto max-w-6xl px-6">
-          <div className="grid items-center gap-10 lg:grid-cols-2">
-            <div>
-              <Badge
-                variant="secondary"
-                className="mb-4 rounded-full px-3 py-1 text-xs font-semibold tracking-wide uppercase"
-              >
-                Meet the founder
-              </Badge>
-              <h2 className="font-display text-3xl font-bold sm:text-4xl">
-                Hi, I&apos;m Riette
-              </h2>
-              <p className="mt-4 leading-relaxed text-muted-foreground">
-                My name is Riette Beling, and aside from my wonderful family, the
-                two great loves of my life are books and dogs. I share my home
-                with Killer, my bold black Miniature Pinscher, and Tiffany, my
-                fearless white Chihuahua.
-              </p>
-              <p className="mt-4 leading-relaxed text-muted-foreground">
-                Tiffany is the spark that inspired all of this — she&apos;s brave,
-                independent, and unapologetically herself. I&apos;d always loved
-                the idea of a book club, and I&apos;m part of an online one, but I
-                missed interacting with real people. So I started Tiffany&apos;s
-                Tales: a cosy, in-person pack for lively, joyful conversations
-                about stories and pets. After all, what could be better than
-                curling up with a good book and a loyal dog by your side?
-              </p>
-              <p className="mt-4 leading-relaxed text-muted-foreground">
-                Maybe one day we&apos;ll even have a book &amp; pet meetup where
-                tails wag and pages turn together. Until then — join my pack today!
-              </p>
-              <div className="mt-6 flex flex-wrap gap-x-8 gap-y-4">
-                <div className="flex items-center gap-2">
-                  <BookHeart className="size-5 text-primary" />
-                  <span className="text-sm font-medium">Books &amp; dogs</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <PawPrint className="size-5 text-primary" />
-                  <span className="text-sm font-medium">
-                    Named after Tiffany the chihuahua
-                  </span>
-                </div>
-              </div>
-            </div>
-            <div className="relative aspect-[4/3] w-full overflow-hidden rounded-3xl shadow-md ring-1 ring-foreground/10">
+        <div className="mx-auto max-w-3xl px-6">
+          <div className="text-center">
+            <Badge
+              variant="secondary"
+              className="mb-6 rounded-full px-3 py-1 text-xs font-semibold tracking-wide uppercase"
+            >
+              Meet the founder
+            </Badge>
+            {/* Riette & Tiffany — the real photo, front and centre above the bio */}
+            <div className="relative mx-auto aspect-[1207/600] w-full max-w-2xl overflow-hidden rounded-3xl shadow-lg ring-1 ring-foreground/10">
               <Image
-                src="/images/reading-cozy.jpg"
-                alt="A cosy reading nook — a good book and a loyal dog by your side"
+                src="/images/riette-and-tiffany.png"
+                alt="Riette with Tiffany, her white Chihuahua, and Killer, her black Miniature Pinscher"
                 fill
-                sizes="(min-width: 1024px) 32rem, 90vw"
+                sizes="(min-width: 768px) 42rem, 90vw"
                 className="object-cover"
+                priority
               />
+            </div>
+            <h2 className="mt-8 font-display text-3xl font-bold sm:text-4xl">
+              Hi, I&apos;m Riette
+            </h2>
+          </div>
+          <p className="mt-6 leading-relaxed text-muted-foreground">
+            My name is Riette Beling, and aside from my wonderful family, the two
+            great loves of my life are books and dogs. I share my home with
+            Killer, my bold black Miniature Pinscher, and Tiffany, my fearless
+            white Chihuahua.
+          </p>
+          <p className="mt-4 leading-relaxed text-muted-foreground">
+            Tiffany is the spark that inspired all of this — she&apos;s brave,
+            independent, and unapologetically herself. I&apos;d always loved the
+            idea of a book club, and I&apos;m part of an online one, but I missed
+            interacting with real people. So I started Tiffany&apos;s Tales: a
+            cosy, in-person pack for lively, joyful conversations about stories
+            and pets. After all, what could be better than curling up with a good
+            book and a loyal dog by your side?
+          </p>
+          <p className="mt-4 leading-relaxed text-muted-foreground">
+            Maybe one day we&apos;ll even have a book &amp; pet meetup where tails
+            wag and pages turn together. Until then — join my pack today!
+          </p>
+          <div className="mt-6 flex flex-wrap justify-center gap-x-8 gap-y-4">
+            <div className="flex items-center gap-2">
+              <BookHeart className="size-5 text-primary" />
+              <span className="text-sm font-medium">Books &amp; dogs</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <PawPrint className="size-5 text-primary" />
+              <span className="text-sm font-medium">
+                Named after Tiffany the chihuahua
+              </span>
             </div>
           </div>
         </div>

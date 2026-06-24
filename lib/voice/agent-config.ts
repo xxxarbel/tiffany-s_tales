@@ -24,7 +24,7 @@ const STRING_KEYS = [
   "greeting",
   "prompt",
 ] as const;
-const NUMBER_KEYS = ["temperature", "speed"] as const;
+const NUMBER_KEYS = ["temperature", "speed", "avatarScale"] as const;
 
 function sanitize(raw: unknown): Partial<AgentConfig> {
   if (!raw || typeof raw !== "object") return {};
