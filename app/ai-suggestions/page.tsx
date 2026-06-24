@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 
 import { getSafeSession } from "@/lib/auth";
 import { getAiSuggestions } from "@/lib/ai-suggestions";
+import { getAnthropicApiKey } from "@/lib/anthropic";
 import { SiteHeader } from "@/components/site-header";
 import { AiSuggestions } from "@/components/ai-suggestions/ai-suggestions";
 
@@ -19,7 +20,9 @@ export default async function AiSuggestionsPage() {
   }
 
   const existing = await getAiSuggestions(session.user.id);
-  const enabled = Boolean(process.env.ANTHROPIC_API_KEY);
+  // Use the shared resolver so this matches the nav-tab gate and the generator,
+  // which both accept either ANTHROPIC_API_KEY or CLAUDE_API_KEY.
+  const enabled = Boolean(getAnthropicApiKey());
 
   return (
     <div className="min-h-svh bg-muted/40">
