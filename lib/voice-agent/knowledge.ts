@@ -16,9 +16,9 @@ export const KNOWLEDGE_BASE: KnowledgeEntry[] = [
       "Membership is just ten pounds a month, and it includes our monthly in-person meet-up and the everyday online chat. You can join from the link on the site.",
   },
   {
-    keywords: ["pack", "packs", "group", "where", "location", "maidstone", "sittingbourne", "meet", "meeting", "meetup", "in person"],
+    keywords: ["pack", "packs", "group", "where", "location", "maidstone", "sittingbourne", "meet", "meeting", "meetup", "in person", "venue", "time", "when"],
     answer:
-      "We're a cosy in-person book club with two packs — the Maidstone Pack, our home base, and the Sittingbourne Pack. Each pack meets once a month over a warm drink to talk about the book, and we chat online every day in between.",
+      "We're a cosy in-person book club with two packs. The Maidstone Pack meets the first Wednesday of every month at half past seven in the evening, at The Muggleton Inn on the High Street. The Sittingbourne Pack meets the first Monday of every month at half past seven, at The Jenny Wren on Staplehurst Road. Both are ten pounds a month, and we chat on Discord every day in between.",
   },
   {
     keywords: ["book of the month", "this month", "current", "reading", "currently", "pick", "read"],
@@ -36,9 +36,14 @@ export const KNOWLEDGE_BASE: KnowledgeEntry[] = [
       "Tiffany's Tales is a warm community of bookworms from all walks of life, here to celebrate the written word — from thought-provoking discussions to laid-back chats. It's your literary sanctuary. Join my pack today!",
   },
   {
-    keywords: ["benefit", "benefits", "why join", "connection", "discussion", "story"],
+    keywords: ["founder", "started", "who started", "riette", "owner", "tiffany", "dog", "dogs", "chihuahua", "killer", "pet", "pets", "story"],
     answer:
-      "Joining brings three lovely things: real connection with fellow readers, lively monthly discussion, and a fresh story to enjoy each month — plus a real sense of belonging.",
+      "The club was started by Riette Beling, whose two great loves are books and dogs. It's named after her fearless white Chihuahua, Tiffany — the spark behind it all. She also has a Miniature Pinscher called Killer, and the club is all about joyful conversations about both stories and pets.",
+  },
+  {
+    keywords: ["benefit", "benefits", "why join", "connection", "discussion", "discord", "merchandise", "treats", "genre", "genres", "included"],
+    answer:
+      "For ten pounds a month you get engaging discussions online and in person, our Discord social platform, monthly in-person meet-ups, a brand-new book every month at the meetings, and bookish merchandise and treats. The book pool spans crime and thriller, fantasy, romance, and historical fiction.",
   },
   {
     keywords: ["contact", "email", "question", "reach", "get in touch", "help"],

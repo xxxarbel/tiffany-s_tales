@@ -46,10 +46,12 @@
   `public`). `goodreads_book` holds the **full library (~1031 books)** and `instagram_post` the
   current Behold feed (**7 posts**, accumulating). The live `/reviews`, `/goodreads`, and
   `/instagram` pages render them. (Earlier these tables were local-Docker-only; resolved — see §8c.)
-- ✅ **`book_log` + `user_profile` are now on Neon too.** Both member tables (§8j/§8k) are applied to
-  **both local Docker and Neon** via the idempotent runner **`npm run db:member`**
-  (`scripts/member-tables-setup.mjs`), and versioned in **`drizzle/0003_member_book_log_and_profile.sql`**
-  (reference-only, like `0002`). The **code** for those pages shipped in `c02f9cc`/`da53964`
+- ✅ **`book_log` + `user_profile` + `ai_suggestions` are now on Neon too.** All three member tables
+  (§8j/§8k/§8l) are applied to **both local Docker and Neon** via the idempotent runner
+  **`npm run db:member`** (`scripts/member-tables-setup.mjs`), and versioned in
+  **`drizzle/0003_member_book_log_and_profile.sql`** + **`0004_ai_suggestions.sql`** (reference-only,
+  like `0002`). (`ai_suggestions` was applied to Neon this session to fix the prod
+  `relation "ai_suggestions" does not exist` error.) The **code** for those pages shipped in `c02f9cc`/`da53964`
   (**pushed**), so once the Vercel build finishes `/log-a-book` and the profile reading fields work in
   prod against Neon. Also still pending: **`DEEPGRAM_API_KEY` in Vercel** (voice, §8h) and the voice
   **`documents`/`chunks` tables on Neon** (`voice:db`).
@@ -242,15 +244,16 @@ public page (§8h). Clicking a nav tab navigates to a real page (no more scroll-
 - **`/log-a-book`** — protected: a member's private **reading log** (add title/author/genre + a 1–5
   paw rating; inline re-rate / delete). Shown in the header only when signed in. §8j.
 - **`/ai-suggestions`** — protected: **Tiffany AI Suggestions** — 3–5 AI book picks (claude-haiku-4-5
-  + web search) from the member's profile + log, each with a substantiation + a real cover. Tab hidden
-  unless `ANTHROPIC_API_KEY` is set. §8l.
+  + web search) from the member's profile + log, each with a substantiation + a real cover.
+  **One generation per 24h** per member. Tab hidden unless an Anthropic key (`ANTHROPIC_API_KEY` or
+  `CLAUDE_API_KEY`) is set. §8l.
 - **`/admin`** — owner-only (see §8a).
 
 **Header nav** (`components/site-header.tsx`, client, route-based active state via `usePathname`):
 - Always: Home · About · Book Club Benefits · Book Reviews · **Book of the Month** · **Good Reads** ·
   **Instagram** · Contact (one `navLinks` array drives both the desktop tabs and the mobile `Sheet`).
 - When signed in: **Dashboard · Log a Book · Profile** (and **Admin** when `role === "admin"`, and
-  **Tiffany AI Suggestions** when `ANTHROPIC_API_KEY` is set — fetched from `/api/ai-suggestions/config`
+  **Tiffany AI Suggestions** when an Anthropic key is set — fetched from `/api/ai-suggestions/config`
   on mount, §8l) — the `sessionLinks` array — plus the avatar `UserMenu`. Logged out: Log in / Join my
   pack. Mobile = `Sheet` with the same links.
 
@@ -801,13 +804,18 @@ drizzle.config.ts  components.json  .env / .env.example  vercel.json (two Vercel
   tastes, **web-searches goodreads.com / amazon.com**, and returns **3–5 picks, each with a
   substantiation** that cites the member's own stated tastes and ratings. Each pick shows a **real
   fetched cover** (`<BookCover>`, §8f) — the always-show-a-cover rule. **Get suggestions / Refresh**
-  generate on demand; the latest set **persists** and shows instantly on return visits.
-- **Gating:** the whole tab is **hidden when `ANTHROPIC_API_KEY` is unset**, mirroring the
+  generate on demand — but **capped at one generation per rolling 24h** per member (see **Daily
+  limit** below); the latest set **persists** and shows instantly on return visits.
+- **Gating:** the whole tab is **hidden when no Anthropic key is set** — `ANTHROPIC_API_KEY` *or*
+  `CLAUDE_API_KEY`, resolved by **`getAnthropicApiKey()`** (`lib/anthropic.ts`) — mirroring the
   `DEEPGRAM_API_KEY` → voice pattern. `app/api/ai-suggestions/config/route.ts` (`force-dynamic`,
   `runtime=nodejs`, `no-store`) returns only `{ enabled }`; `site-header.tsx` fetches it on mount and
   appends the tab to `sessionLinks` only when `session && enabled`. The route is also
   `getSafeSession`-guarded, so hitting it logged-out redirects to `/login` and the in-page state reads
-  "not available yet" when unconfigured.
+  "not available yet" when unconfigured. ⚠️ **All three gates now agree** — the config route, the
+  page's `enabled` flag, and the generator all go through `getAnthropicApiKey()`. (The page previously
+  checked `process.env.ANTHROPIC_API_KEY` **directly**, so when only `CLAUDE_API_KEY` was set in
+  prod the tab appeared but the page rendered "unavailable"; fixed in `7b127b0`.)
 - **Model/API:** `claude-haiku-4-5` (cheapest tier) via `@anthropic-ai/sdk`, with the **basic**
   `web_search_20250305` server tool (the dynamic-filtering `web_search_20260209` needs Opus/Sonnet
   4.6+), **structured outputs** (`output_config.format`), and **no** `effort`/`thinking` (both error /
@@ -818,11 +826,28 @@ drizzle.config.ts  components.json  .env / .env.example  vercel.json (two Vercel
   the model; **`lib/ai-suggestions.ts`** (`getAiSuggestions` / `setAiSuggestions`) reads/upserts.
 - **Table `ai_suggestions`** (§8c, 1:1 with `user`, PK = `user_id`): `suggestions` (JSON-encoded
   `Suggestion[]` in a **text** column — this schema has no jsonb), `model`, `generated_at`. Created via
-  **`npm run db:member`**; versioned in **`drizzle/0004_ai_suggestions.sql`** (reference-only).
+  **`npm run db:member`**; versioned in **`drizzle/0004_ai_suggestions.sql`** (reference-only). Now
+  materialised on **both local Docker and Neon** — the Neon table was created this session by running
+  `db:member` against the Neon `DATABASE_URL` (fixes the prod `relation "ai_suggestions" does not
+  exist` error). ⚠️ Assumes Vercel's prod `DATABASE_URL` is the **same** Neon database that was
+  migrated — verify the host matches if the error persists (§10).
 - **Server action** (`app/ai-suggestions/actions.ts` → `generateSuggestionsAction`): re-checks the
-  session and the `ANTHROPIC_API_KEY`, generates + `setAiSuggestions(user.id, …)`,
-  `revalidatePath("/ai-suggestions")`. Page sets `export const maxDuration = 60` (web search + model
-  can take 15–40s). UI: `components/ai-suggestions/ai-suggestions.tsx` (client, `useTransition`).
+  session and the Anthropic key (`getAnthropicApiKey()`), **enforces the 24h limit** (below), generates +
+  `setAiSuggestions(user.id, …)`, `revalidatePath("/ai-suggestions")`. Page sets
+  `export const maxDuration = 60` (web search + model can take 15–40s). UI:
+  `components/ai-suggestions/ai-suggestions.tsx` (client, `useTransition`).
+- **Daily limit (once per rolling 24h):** a member may generate at most one set per 24-hour window
+  (rolling, not a calendar day, so it's timezone-proof; keyed off `ai_suggestions.generated_at`).
+  **Enforced server-side** in `generateSuggestionsAction` so it can't be bypassed by replaying the
+  action — it reads the last run via **`getSuggestionsGeneratedAt(userId)`** and, if
+  **`nextAllowedAt(...)`** is still in the future, returns a friendly *"check back in about N hours"*
+  **without calling the model**. The **UI mirrors** it: the page computes **`suggestionsOnCooldown(...)`**
+  + `nextAvailableAtMs` **server-side** (keeping `Date.now()` out of the React render path — a lint
+  rule) and passes them to the client, which **disables the Refresh button** and shows *"New picks
+  available &lt;date/time&gt;"*. First-time members (no row) have no cooldown; the check **fails open**
+  (a DB read error allows the generation rather than blocking). Constant + helpers
+  (`SUGGESTIONS_COOLDOWN_MS`, `nextAllowedAt`, `suggestionsOnCooldown`, `getSuggestionsGeneratedAt`)
+  live in `lib/ai-suggestions.ts`. Added in `80ca76a`.
 
 ### Google OAuth (`.design/.specs/better_auth.md`)
 - Config in `lib/auth.ts` `socialProviders.google` (`prompt: "select_account"`), guarded by
@@ -911,7 +936,7 @@ npm run db:studio     # Drizzle Studio GUI
 npm run db:generate   # generate SQL migration files
 npm run db:migrate    # apply generated migrations
 npm run db:seed-admin # node --env-file=.env scripts/seed-admin.mjs (promote owner to admin)
-npm run db:member     # node --env-file=.env scripts/member-tables-setup.mjs (create book_log + user_profile, §8j/§8k)
+npm run db:member     # node --env-file=.env scripts/member-tables-setup.mjs (create book_log + user_profile + ai_suggestions, §8j/§8k/§8l)
 npm run voice:db      # node --env-file=.env scripts/voice-db-setup.mjs (create documents+chunks, §8h)
 npm run voice:ingest  # node --env-file=.env scripts/ingest-knowledge.mjs (seed knowledge docs, §8h)
 ```
@@ -932,8 +957,8 @@ For Neon, query with any pg client using the Neon `DATABASE_URL`.
 1. Ensure Vercel env vars are set (§9), including **`CRON_SECRET`** for the Instagram cron and
    **`DEEPGRAM_API_KEY`** for the voice assistant (§8h).
 2. Ensure Neon has the current schema. It has `pageview`, `goodreads_book`, `instagram_post`, and
-   now **`book_log` + `user_profile`** (§8c) — the latter two were applied with **`npm run db:member`**
-   pointed at the Neon `DATABASE_URL` (idempotent; re-run any time to sync). ⚠️ Use `db:member` (or
+   now **`book_log` + `user_profile` + `ai_suggestions`** (§8c) — those three were applied with
+   **`npm run db:member`** pointed at the Neon `DATABASE_URL` (idempotent; re-run any time to sync). ⚠️ Use `db:member` (or
    the equivalent `drizzle/0003_member_book_log_and_profile.sql`), **not** `db:push` — push prompts
    interactively while the voice `documents`/`chunks` tables are unmanaged. The Book of the Month
    (§8i) needs **no** SQL (it reuses `app_settings`). For the voice assistant, also run **`voice:db`**
@@ -1030,6 +1055,11 @@ at `c02f9cc`/`da53964` — the **Book of the Month** (§8i), the **Log a Book** 
       Neon URL (both tables verified); versioned in `drizzle/0003_member_book_log_and_profile.sql`. (§8c/§10)
 - [x] ~~Push `c02f9cc` to deploy~~ — **done**: `c02f9cc` (features) + `da53964` (migrations) pushed to
       `origin/main`; Vercel auto-deploys. Neon already has the tables. (§10)
+- [x] ~~Ship **Tiffany AI Suggestions** + make it work in prod~~ — **done**: tab (`2f5eea4`); env-var
+      gate made consistent so it works when only `CLAUDE_API_KEY` is set, not just `ANTHROPIC_API_KEY`
+      (`7b127b0`); `ai_suggestions` applied to Neon (fixed prod `relation … does not exist`); and a
+      **one-generation-per-24h** limit (`80ca76a`). ⚠️ Confirm Vercel's prod `DATABASE_URL` is the
+      **same** Neon DB that was migrated (else the table error returns). (§8l)
 - [ ] **Voice assistant → prod (§8h):** add `DEEPGRAM_API_KEY` to Vercel (verified missing →
       launcher hidden), run `voice:db` + `voice:ingest` against the Neon URL (tables not there yet),
       and smoke-test the live mic↔WebSocket conversation in a browser (untested headlessly).
@@ -1069,14 +1099,19 @@ at `c02f9cc`/`da53964` — the **Book of the Month** (§8i), the **Log a Book** 
   **Deepgram voice assistant + admin control** (`b634ad2`) → **hide voice launcher when
   `DEEPGRAM_API_KEY` unset** (`57c504a`) → **Book of the Month + Log a Book + reading profiles +
   voice auto-start/avatars** (`c02f9cc`) → **versioned `book_log`/`user_profile` migrations +
-  `db:member` runner** (`da53964`).
-- **State now:** `HEAD` = `origin/main` = `da53964`, **pushed; Vercel auto-deploying**; working tree
-  clean apart from this DESIGN.md edit. `origin` (live on Vercel) now has everything including the
+  `db:member` runner** (`da53964`) → **Tiffany AI Suggestions tab** (`2f5eea4`) → **accept
+  `CLAUDE_API_KEY` alias** (`a568c02`) → **gate AI-suggestions page on either Anthropic env-var**
+  (`7b127b0`) → **once-per-24h AI-suggestions limit** (`80ca76a`).
+- **State now:** `HEAD` = `origin/main` = `80ca76a`, **pushed; Vercel auto-deploying**; working tree
+  has this DESIGN.md edit. `origin` (live on Vercel) now has everything including the
   Book of the Month, Log a Book, reading profiles, and voice auto-start/avatars. Neon has the
   auth/analytics/Goodreads/Instagram tables, the full Goodreads library (~1031 books, covers
-  backfilled), the Instagram feed (7 posts), and `book_log` + `user_profile` (applied via
-  `npm run db:member`, §8c/§10). Still pending: **`DEEPGRAM_API_KEY` in Vercel** so the voice agent
-  un-hides in prod (§8h), and rotating the API keys pasted in plaintext during this session. The
+  backfilled), the Instagram feed (7 posts), and `book_log` + `user_profile` + `ai_suggestions`
+  (applied via `npm run db:member`, §8c/§10). The **Tiffany AI Suggestions** tab is now live with a
+  once-per-24h generation limit (§8l). Still pending: **`DEEPGRAM_API_KEY` in Vercel** so the voice
+  agent un-hides in prod (§8h); **verifying Vercel's prod `DATABASE_URL`** is the same Neon DB that was
+  migrated (so `ai_suggestions` resolves in prod, §8l); and rotating the API keys pasted in plaintext
+  during this session. The
   `9ab830c` checkpoint bundled
   the Goodreads import, the Instagram import, and the multi-source cover work in one commit (it also
   included `goodreads_library_export-DESKTOP-0FJ40LV.csv` and `goodreads_library_export (1).csv` —

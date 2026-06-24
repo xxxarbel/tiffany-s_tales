@@ -1,9 +1,12 @@
 # Book Club Benefits
 
-Joining Tiffany's Tales brings three lovely things:
+Membership is one simple price — £10 a month — and it includes everything:
 
-- Real Connection: meet fellow readers and book lovers in person, and become part of a warm community where you belong.
-- Lively Discussion: enjoy thought-provoking book discussions every month, from deep debates to laid-back chats about nothing in particular.
-- A Fresh Story: there's a new Book of the Month to read and talk about together, so you're always discovering something new.
+- Engaging discussions with fellow members, both online and at our in-person meet-ups.
+- Access to our Discord social platform, so the pack can chat every day between meetings.
+- Monthly in-person meetings to share your thoughts, ask questions, and gain new perspectives.
+- A brand-new book every month, handed out at our in-person meetings.
+- Bookish merchandise and treats.
+- A genre pool that spans Crime and Thriller, Fantasy, Romance, and Historical Fiction — and members are welcome to suggest books too.
 
-Beyond those, members tell us the club has reignited their passion for reading and introduced them to a wonderful community of like-minded individuals — many look forward to the meetings every month. It's a sense of belonging as much as it is about the books.
+Beyond all that, members tell us the club has reignited their passion for reading and introduced them to a wonderful community of like-minded individuals — many look forward to the meetings every month. It's a sense of belonging as much as it is about the books.

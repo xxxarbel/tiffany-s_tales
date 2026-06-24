@@ -19,14 +19,14 @@ const packs = [
     icon: BookOpen,
     image: "/images/reading-cozy.jpg",
     blurb:
-      "Our Sittingbourne gathering meets monthly in a cosy local spot — settle in with a warm drink and good company while we talk books.",
+      "Settle in with a warm drink and good company while we talk books. We meet the 1st Monday of every month at 7:30pm at The Jenny Wren, Staplehurst Road.",
   },
   {
     name: "Maidstone Pack",
     icon: Coffee,
     image: "/images/pack-maidstone.jpg",
     blurb:
-      "The home of Tiffany's Tales. Friendly faces, lively discussion and a fresh read every month right here in Maidstone.",
+      "The home of Tiffany's Tales — friendly faces, lively discussion and a fresh read every month. We meet the 1st Wednesday of every month at 7:30pm at The Muggleton Inn, High Street.",
   },
 ];
 
