@@ -1,7 +1,11 @@
 import { redirect } from "next/navigation";
 
 import { getSafeSession } from "@/lib/auth";
-import { getAiSuggestions } from "@/lib/ai-suggestions";
+import {
+  getAiSuggestions,
+  nextAllowedAt,
+  suggestionsOnCooldown,
+} from "@/lib/ai-suggestions";
 import { getAnthropicApiKey } from "@/lib/anthropic";
 import { SiteHeader } from "@/components/site-header";
 import { AiSuggestions } from "@/components/ai-suggestions/ai-suggestions";
@@ -23,6 +27,12 @@ export default async function AiSuggestionsPage() {
   // Use the shared resolver so this matches the nav-tab gate and the generator,
   // which both accept either ANTHROPIC_API_KEY or CLAUDE_API_KEY.
   const enabled = Boolean(getAnthropicApiKey());
+  // Once-per-24h limit: compute on the server (current time belongs here) and
+  // pass the flag + next-allowed time so the client can disable the button. The
+  // server action enforces it authoritatively regardless.
+  const nextAt = nextAllowedAt(existing?.generatedAt ?? null);
+  const nextAvailableAtMs = nextAt ? nextAt.getTime() : null;
+  const onCooldown = suggestionsOnCooldown(existing?.generatedAt ?? null);
 
   return (
     <div className="min-h-svh bg-muted/40">
@@ -38,7 +48,12 @@ export default async function AiSuggestionsPage() {
             for you.
           </p>
         </div>
-        <AiSuggestions existing={existing} enabled={enabled} />
+        <AiSuggestions
+          existing={existing}
+          enabled={enabled}
+          onCooldown={onCooldown}
+          nextAvailableAtMs={nextAvailableAtMs}
+        />
       </main>
     </div>
   );

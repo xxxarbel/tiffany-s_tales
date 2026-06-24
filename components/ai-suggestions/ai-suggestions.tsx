@@ -15,9 +15,15 @@ import { Card, CardContent } from "@/components/ui/card";
 export function AiSuggestions({
   existing,
   enabled,
+  onCooldown,
+  nextAvailableAtMs,
 }: {
   existing: StoredSuggestions | null;
   enabled: boolean;
+  /** Server-computed: true while the member is inside the 24h cooldown. */
+  onCooldown: boolean;
+  /** Epoch ms the member may next regenerate, or null if they never have. */
+  nextAvailableAtMs: number | null;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -62,7 +68,7 @@ export function AiSuggestions({
           <Button
             type="button"
             className="h-10 w-fit"
-            disabled={pending}
+            disabled={pending || onCooldown}
             onClick={handleGenerate}
           >
             {pending ? (
@@ -86,6 +92,17 @@ export function AiSuggestions({
                 day: "numeric",
                 year: "numeric",
               })}
+              {onCooldown && nextAvailableAtMs ? (
+                <>
+                  {" · "}New picks available{" "}
+                  {new Date(nextAvailableAtMs).toLocaleString(undefined, {
+                    month: "short",
+                    day: "numeric",
+                    hour: "numeric",
+                    minute: "2-digit",
+                  })}
+                </>
+              ) : null}
             </p>
           ) : null}
         </div>

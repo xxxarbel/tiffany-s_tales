@@ -22,6 +22,36 @@ export interface StoredSuggestions {
   generatedAt: Date;
 }
 
+/**
+ * Members may generate at most one set of suggestions per this window (a rolling
+ * 24h, not a calendar day, so it's timezone-proof). Enforced server-side in the
+ * action; the UI mirrors it by disabling the button until `nextAllowedAt`.
+ */
+export const SUGGESTIONS_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * The earliest the member may generate again given their last generation, or
+ * null if they've never generated (no cooldown). Compare against `Date.now()`.
+ */
+export function nextAllowedAt(
+  lastGeneratedAt: Date | null | undefined
+): Date | null {
+  if (!lastGeneratedAt) return null;
+  return new Date(lastGeneratedAt.getTime() + SUGGESTIONS_COOLDOWN_MS);
+}
+
+/**
+ * Whether the member is currently within the cooldown and may not regenerate.
+ * Lives here (not in a component) so the `Date.now()` read stays out of React's
+ * render path. The server action is still the authoritative gate.
+ */
+export function suggestionsOnCooldown(
+  lastGeneratedAt: Date | null | undefined
+): boolean {
+  const next = nextAllowedAt(lastGeneratedAt);
+  return next !== null && next.getTime() > Date.now();
+}
+
 /** The member's stored suggestions, or null if none have been generated yet. */
 export async function getAiSuggestions(
   userId: string
@@ -45,6 +75,27 @@ export async function getAiSuggestions(
     };
   } catch (error) {
     console.error("[ai-suggestions] read failed:", error);
+    return null;
+  }
+}
+
+/**
+ * The member's last generation time, or null if they've never generated. Used to
+ * enforce the {@link SUGGESTIONS_COOLDOWN_MS} limit without deserialising the
+ * whole suggestions blob. Fails soft (null) so a DB hiccup never blocks the
+ * member — the action would simply allow a generation.
+ */
+export async function getSuggestionsGeneratedAt(
+  userId: string
+): Promise<Date | null> {
+  try {
+    const [row] = await db
+      .select({ generatedAt: aiSuggestions.generatedAt })
+      .from(aiSuggestions)
+      .where(eq(aiSuggestions.userId, userId));
+    return row?.generatedAt ?? null;
+  } catch (error) {
+    console.error("[ai-suggestions] generatedAt read failed:", error);
     return null;
   }
 }
