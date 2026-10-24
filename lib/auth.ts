@@ -39,10 +39,12 @@ const baseURL =
     : configuredURL ?? vercelProductionURL;
 
 // CSRF/origin whitelist. Better Auth only trusts `baseURL` by default, so the
-// production and preview Vercel origins must be added explicitly or sign-in
-// requests from them get a 403 "Invalid origin".
+// production, per-deployment and preview origins must be added explicitly or
+// sign-in requests from them get a 403 "Invalid origin".
 const trustedOrigins = [
   "http://localhost:3000",
+  "https://tiffany-s-tales.atshosting.uk", // production (ATS Hosting)
+  "https://tiffany-s-tales-*.atshosting.uk", // ATS per-deployment URLs
   "https://tiffany-s-tales.vercel.app",
   "https://tiffany-s-tales-*.vercel.app", // Vercel preview deployments
 ];
