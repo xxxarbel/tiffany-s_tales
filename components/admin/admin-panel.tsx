@@ -10,6 +10,7 @@ import type { InstagramPostRow } from "@/lib/instagram"
 import type { AgentConfig } from "@/lib/voice-agent/settings"
 import type { BookOfMonth } from "@/lib/book-of-the-month"
 import { AdminUsersTable, type AdminUser } from "@/components/admin/admin-users-table"
+import { AdminAddUser } from "@/components/admin/admin-add-user"
 import { AdminSettingsForm } from "@/components/admin/admin-settings-form"
 import { AdminAnalytics } from "@/components/admin/admin-analytics"
 import { AdminGoodreads } from "@/components/admin/admin-goodreads"
@@ -83,7 +84,8 @@ export function AdminPanel({
           Email settings
         </TabsTrigger>
       </TabsList>
-      <TabsContent value="users" className="pt-6">
+      <TabsContent value="users" className="flex flex-col gap-6 pt-6">
+        <AdminAddUser />
         <AdminUsersTable
           users={users}
           providersByUser={providersByUser}
