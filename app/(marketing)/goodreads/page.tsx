@@ -8,6 +8,10 @@ export const metadata = {
   title: "Good Reads · Tiffany's Tales",
 };
 
+// Re-read the database at most once a minute. ATS builds can't reach the DB, so
+// the build-time render is empty until the first revalidation after a deploy.
+export const revalidate = 60;
+
 function StarRating({ rating }: { rating: number }) {
   return (
     <div

@@ -12,6 +12,10 @@ export const metadata = {
     "The book the Tiffany's Tales pack is reading and discussing this month.",
 };
 
+// Re-read the database at most once a minute. ATS builds can't reach the DB, so
+// the build-time render is empty until the first revalidation after a deploy.
+export const revalidate = 60;
+
 export default async function BookOfMonthPage() {
   const pick = await getBookOfMonth();
   // Show the book as soon as a title has been entered in the admin — every

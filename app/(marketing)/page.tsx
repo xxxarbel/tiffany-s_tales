@@ -15,6 +15,10 @@ import { Logo } from "@/components/logo";
 import { BookCover } from "@/components/book-cover";
 import { getBookOfMonth } from "@/lib/book-of-the-month";
 
+// Re-read the database at most once a minute. ATS builds can't reach the DB, so
+// the build-time render is empty until the first revalidation after a deploy.
+export const revalidate = 60;
+
 // Each pack meets at a real venue. Exterior shots are Creative Commons photos
 // from Geograph (CC BY-SA 2.0) — credited under each image as the licence
 // requires. The Muggleton interior is Riette's own meet-up photo. Each tile
